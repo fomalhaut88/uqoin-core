@@ -60,9 +60,9 @@ dependencies = [
 
 [[package]]
 name = "finitelib"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a61db4673cf4d82672210042c948c85b94b96ab957bb319f7e10d47b208007d"
+checksum = "3f696d97635f7bc0eca8e95684767559c2c69ada1a487336bf6a4f96947e8584"
 dependencies = [
  "rand",
 ]

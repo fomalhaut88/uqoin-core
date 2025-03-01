@@ -237,6 +237,23 @@ mod tests {
         assert!(result);
     }
 
+    #[test]
+    fn test_calc_x() {
+        // Create a curve instance
+        let ed25519 = TwistedEdwardsCurve::new_ed25519();
+
+        // Test y
+        let y = U256::from_decimal(
+            "1199956463082827061555360551106195666022978064759116914037829679333165248376"
+        );
+
+        // Calculate x
+        let x = ed25519.calc_x(&y).unwrap();
+
+        // Check
+        assert!(ed25519.on_curve(&(x, y)));
+    }
+
     #[bench]
     fn bench_on_curve(bencher: &mut Bencher) {
         // Create a curve instance
@@ -279,6 +296,7 @@ mod tests {
         // Benchmark
         bencher.iter(|| {
             let y: U256 = &rng.random::<U256>() % &ed25519.modulo;
+            // println!("y = {:?}", y.to_decimal());
             let _ = ed25519.calc_x(&y);
         });
     }
