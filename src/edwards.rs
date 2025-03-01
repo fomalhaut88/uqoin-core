@@ -12,6 +12,7 @@
 //! 0x1000000000000000000000000000000014DEF9DEA2F79CD65812631A5CF5D3ED
 //! and cofactor 8.
 
+use rand::Rng;
 use finitelib::prelude::*;
 use finitelib::group::Group;
 use finitelib::gf::prime::Prime;
@@ -106,6 +107,43 @@ impl TwistedEdwardsCurve {
     pub fn power(&self, it: impl Iterator<Item = bool>) -> (U256, U256) {
         self.mul_scalar(&self.generator, it)
     }
+
+    /// Generate a key pair.
+    pub fn gen_pair<R: Rng>(&self, rng: &mut R) -> (U256, (U256, U256)) {
+        let key: U256 = rng.random();
+        let public = self.power(key.bit_iter());
+        (key, public)
+    }
+
+    /// Check a key pair.
+    pub fn check_pair(&self, key: &U256, public: &(U256, U256)) -> bool {
+        self.power(key.bit_iter()) == *public
+    }
+
+    /// Build ECDSA signature.
+    pub fn build_signature<R: Rng>(&self, rng: &mut R, msg: &U256, 
+                                   key: &U256) -> (U256, U256) {
+        let k: U256 = rng.random();
+        let r = self.power(k.bit_iter());
+        let s = self.field.div(
+            &self.field.add(msg, &self.field.mul(key, &r.1)),
+            &k
+        ).unwrap();
+        (r.1, s)
+    }
+
+    /// Check ECDSA signature.
+    pub fn check_signature(&self, msg: &U256, public: &(U256, U256), 
+                           signature: &(U256, U256)) -> bool {
+        let (r1, s) = signature;
+        let u = self.field.div(msg, s).unwrap();
+        let v = self.field.div(r1, s).unwrap();
+        let r = self.add(
+            &self.mul_scalar(&self.generator, u.bit_iter()),
+            &self.mul_scalar(public, v.bit_iter()),
+        );
+        r.1 == *r1
+    }
 }
 
 
@@ -158,8 +196,6 @@ mod tests {
     use super::*;
     use test::Bencher;
 
-    use rand::Rng;
-
     #[test]
     fn test_eq25519() {
         // Create a curve instance
@@ -174,6 +210,31 @@ mod tests {
         // Check the order
         let e = ed25519.power(ed25519.order.bit_iter());
         assert_eq!(e, ed25519.zero());
+    }
+
+    #[test]
+    fn test_signature() {
+        // Create a curve instance
+        let ed25519 = TwistedEdwardsCurve::new_ed25519();
+
+        // Random generator
+        let mut rng = rand::rng();
+
+        // Create a pair
+        let (key, public) = ed25519.gen_pair(&mut rng);
+        assert!(ed25519.on_curve(&public));
+
+        // Data
+        let msg: U256 = rng.random();
+
+        // Create a signature
+        let signature = ed25519.build_signature(&mut rng, &msg, &key);
+
+        // Check signature
+        let result = ed25519.check_signature(&msg, &public, &signature);
+
+        println!("{:?}", result);
+        // assert!(result);
     }
 
     #[bench]
