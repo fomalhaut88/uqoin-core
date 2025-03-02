@@ -1,101 +1,103 @@
 //! Coin structure.
 
 use rand::Rng;
-use sha3::{Sha3_256, Digest};
+use finitelib::prelude::*;
 
-use crate::utils::U256;
-
-
-// pub struct Coin {
-//     pub num: U256,
-//     pub own: U256,
-//     pub den: u32,
-// }
+use crate::utils::*;
+use crate::hash::*;
 
 
-// impl Coin {
-//     pub fn new(num: U256, own: U256, den: u32) -> Self {
-//         Self { num, own, den }
-//     }
-// }
-
-
-// pub struct NewCoin {
-//     pub number: U256,
-//     pub miner: U256,
-//     pub block_hash: U256,
-//     pub denomination: u32,
-//     pub split: bool,
-// }
-
-
-// impl NewCoin {
-//     pub fn new(number: U256, miner: U256, block_hash: U256) -> Self {
-//         let coin_hash = Self::calc_hash(&number, &miner, &block_hash);
-//         let denomination = Self::calc_denomination(&coin_hash);
-//         let split = Self::calc_split(&coin_hash);
-//         Self { number, miner, block_hash, denomination, split}
-//     }
-
-//     pub fn get_hash(&self) -> U256 {
-//         Self::calc_hash(&self.number, &self.miner, &self.block_hash)
-//     }
-
-//     pub fn is_valid(&self) -> bool {
-//         let coin_hash = self.get_hash();
-//         (self.denomination == Self::calc_denomination(&coin_hash)) && 
-//             (self.split == Self::calc_split(&coin_hash))
-//     }
-
-//     pub fn calc_hash(number: &U256, miner: &U256, block_hash: &U256) -> U256 {
-//         let mut hasher = Sha3_256::new();
-//         hasher.update(number.to_bytes());
-//         hasher.update(miner.to_bytes());
-//         hasher.update(block_hash.to_bytes());
-//         let coin_hash = hasher.finalize();
-//         U256::from_bytes(&coin_hash)
-//     }
-
-//     pub fn calc_denomination(coin_hash: &U256) -> u32 {
-//         256 - coin_hash.bit_len() as u32
-//     }
-
-//     pub fn calc_split(coin_hash: &U256) -> bool {
-//         coin_hash.bit_get(0)
-//     }
-// }
-
-
-pub fn coin_get_hash(coin: &U256, miner: &U256, block_hash: &U256) -> U256 {
-    let mut hasher = Sha3_256::new();
-    hasher.update(coin.to_bytes());
-    hasher.update(miner.to_bytes());
-    hasher.update(block_hash.to_bytes());
-    let coin_hash = hasher.finalize();
-    U256::from_bytes(&coin_hash)
+/// Coin structure that keeps the numberm hash, block_hash and value.
+pub struct Coin {
+    number: U256,
+    hash: U256,
+    block_hash: U256,    
+    value: u32,
 }
 
 
-pub fn coin_get_denomination(coin_hash: &U256) -> u32 {
-    256 - coin_hash.bit_len() as u32
+impl Coin {
+    /// Create a new coin having the number and the block_hash.
+    pub fn new(number: U256, block_hash: U256) -> Self {
+        let hash = Self::calc_hash(&number, &block_hash);
+        let value = Self::calc_value(&hash);
+        Self { number, hash, block_hash, value }
+    }
+
+    /// Check if the coin is valid. This means first 128 bit must be the same
+    /// as block_hash.
+    pub fn is_valid(&self) -> bool {
+        self.number.as_array()[2..] == self.block_hash.as_array()[2..]
+    }
+
+    /// Number of the coin.
+    pub fn number(&self) -> &U256 {
+        &self.number
+    }
+
+    /// Hash of the coin.
+    pub fn hash(&self) -> &U256 {
+        &self.hash
+    }
+
+    /// Block hash of the coin.
+    pub fn block_hash(&self) -> &U256 {
+        &self.block_hash
+    }
+
+    /// Denomination level of the coin. It is a power of 2, for example,
+    /// value = 11 means 2048 units.
+    pub fn value(&self) -> u32 {
+        self.value
+    }
+
+    /// Symbol of the coin value.
+    pub fn symbol(&self) -> String {
+        let letter: char = ('A' as u8 + (self.value / 10) as u8) as char;
+        let number: u32 = 1 << (self.value % 10);
+        format!("{}{}", letter, number)
+    }
+
+    /// Geterate a random coin having the given block hash.
+    pub fn gen_random<R: Rng>(rng: &mut R, block_hash: &U256) -> Self {
+        // Prefix from block_hash
+        let prefix = &block_hash.as_array()[2..];
+
+        // Suffix as random 128-bit value
+        let suffix = rng.random::<Bigi<2>>();
+        
+        // Concatenate prefix and suffix to get a new coin
+        let mut number: U256 = (&suffix).into();
+        number.as_array_mut()[2..].clone_from_slice(prefix);
+        
+        // Return coin
+        Self::new(number, block_hash.clone())
+    }
+
+    /// Mine iterator for the given block hash filteging by `min_value`.
+    /// It uses one thread.
+    pub fn mine<R: Rng>(rng: &mut R, block_hash: &U256, 
+                        min_value: u32) -> impl Iterator<Item = Self> {
+        std::iter::repeat(1)
+            .map(|_| Self::gen_random(rng, block_hash))
+            .filter(move |coin| coin.value() >= min_value)
+    }
+
+    /// Calculate coin hash from the number and block hash.
+    pub fn calc_hash(number: &U256, block_hash: &U256) -> U256 {
+        hash_of_u256(&[&number, &block_hash])
+    }
+
+    /// Calculate coin value from its hash.
+    pub fn calc_value(hash: &U256) -> u32 {
+        256 - hash.bit_len() as u32
+    }
 }
 
 
-pub fn coin_get_name(den: u32) -> String {
-    let letter: char = ('A' as u8 + (den / 10) as u8) as char;
-    let number: u32 = 1 << (den % 10);
-    format!("{}{}", letter, number)
-}
-
-
-pub fn coin_mine<R: Rng>(rng: &mut R, miner: &U256, block_hash: &U256, den_low: u32) -> (U256, u32) {
-    loop {
-        let coin: U256 = rng.random();
-        let coin_hash = coin_get_hash(&coin, &miner, &block_hash);
-        let den = coin_get_denomination(&coin_hash);
-        if den >= den_low {
-            return (coin, den);
-        }
+impl ToString for Coin {
+    fn to_string(&self) -> String {
+        format!("{} [{}]", self.symbol(), self.number().to_hex())
     }
 }
 
@@ -106,66 +108,64 @@ mod tests {
     use test::Bencher;
 
     #[test]
-    fn test_coin_hash() {
-        let coin = U256::from_hex("6D788362D32CB65D518B301C0685E1F9BAA7DBCD935DA3F150D629CAE12D8E3B");
-        let miner = U256::from_hex("F4341BD686F0F4985B6A74EF5CA1C1DC7C8880C7DF7F4CDABF917084D058C3BC");
-        let block_hash = U256::from_hex("59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8");
+    fn test_coin() {
+        let number = U256::from_hex(
+            "59475E1B6C3C729B1BD5A34486AD423EDAFFEB954E9CCC2F9654C77873F81574"
+        );
+        let block_hash = U256::from_hex(
+            "59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
+        );
 
-        let coin_hash = coin_get_hash(&coin, &miner, &block_hash);
-        let den = coin_get_denomination(&coin_hash);
+        let coin = Coin::new(number, block_hash);
 
-        assert_eq!(coin_hash.to_hex(), "0000D026076CAF7D890376B0270DAB9FB0E70AB9F96926234C211B0D315B0B32".to_string());
-        assert_eq!(den, 16);
+        assert_eq!(coin.is_valid(), true);
+        assert_eq!(coin.symbol(), "C1");
+        assert_eq!(coin.value(), 20);
+        assert_eq!(
+            coin.hash().to_hex(), 
+            "00000D49EE12DA8FCB7DD134DB2C28BE8FB1B080B40907F1DD5827AFF0F3156B"
+        );
+        assert_eq!(
+            coin.to_string(), 
+            "C1 [59475E1B6C3C729B1BD5A34486AD423EDAFFEB954E9CCC2F9654C77873F81574]"
+        );
     }
 
     #[test]
-    fn test_coin_mine() {
+    fn test_mine() {
+        let block_hash = U256::from_hex(
+            "59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
+        );
+
         let mut rng = rand::rng();
 
-        let miner = U256::from_hex("F4341BD686F0F4985B6A74EF5CA1C1DC7C8880C7DF7F4CDABF917084D058C3BC");
-        let block_hash = U256::from_hex("59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8");
+        let coins = Coin::mine(&mut rng, &block_hash, 10)
+            .take(3).collect::<Vec<Coin>>();
 
-        let (coin, den) = coin_mine(&mut rng, &miner, &block_hash, 12);
-
-        assert!(den >= 12);
-    }
-
-    #[test]
-    fn test_coin_get_name() {
-        assert_eq!(coin_get_name(35), "D32");
-        assert_eq!(coin_get_name(74), "H16");
-        assert_eq!(coin_get_name(130), "N1");
+        assert!(coins.iter().all(|coin| coin.is_valid()));
+        assert!(coins.iter().all(|coin| coin.value() >= 10));
     }
 
     #[bench]
-    fn bench_coin_hash(bencher: &mut Bencher) {
-        let coin = U256::from_hex("6D788362D32CB65D518B301C0685E1F9BAA7DBCD935DA3F150D629CAE12D8E3B");
-        let miner = U256::from_hex("F4341BD686F0F4985B6A74EF5CA1C1DC7C8880C7DF7F4CDABF917084D058C3BC");
-        let block_hash = U256::from_hex("59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8");
-
+    fn bench_gen_random(bencher: &mut Bencher) {
+        let block_hash = U256::from_hex(
+            "59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
+        );
+        let mut rng = rand::rng();
         bencher.iter(|| {
-            let _coin_hash = coin_get_hash(&coin, &miner, &block_hash);
+            let _coin = Coin::gen_random(&mut rng, &block_hash);
         });
     }
 
     #[bench]
-    fn bench_coin_den(bencher: &mut Bencher) {
-        let coin_hash = U256::from_hex("0000D026076CAF7D890376B0270DAB9FB0E70AB9F96926234C211B0D315B0B32");
-
-        bencher.iter(|| {
-            let _den = coin_get_denomination(&coin_hash);
-        });
-    }
-
-    #[bench]
-    fn bench_coin_mine(bencher: &mut Bencher) {
+    fn bench_mine_10(bencher: &mut Bencher) {
+        let block_hash = U256::from_hex(
+            "59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
+        );
         let mut rng = rand::rng();
-
-        let miner = U256::from_hex("F4341BD686F0F4985B6A74EF5CA1C1DC7C8880C7DF7F4CDABF917084D058C3BC");
-        let block_hash = U256::from_hex("59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8");
-
+        let mut it = Coin::mine(&mut rng, &block_hash, 10);
         bencher.iter(|| {
-            let (_coin, _den) = coin_mine(&mut rng, &miner, &block_hash, 8);
+            let _coin = it.next();
         });
     }
 }

@@ -296,7 +296,6 @@ mod tests {
         // Benchmark
         bencher.iter(|| {
             let y: U256 = &rng.random::<U256>() % &ed25519.modulo;
-            // println!("y = {:?}", y.to_decimal());
             let _ = ed25519.calc_x(&y);
         });
     }
