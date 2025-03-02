@@ -33,7 +33,7 @@ impl Transaction {
     /// fee, split and merge use 0, 1 and 2 for `addr` respectively.
     pub fn build<R: Rng>(rng: &mut R, coin: U256, addr: U256, key: &U256, 
                          schema: &Schema) -> Self {
-        let hash = Self::calc_hash(&coin, &addr);
+        let hash = Self::calc_msg(&coin, &addr);
         let (sign_r, sign_s) = schema.build_signature(rng, &hash, key);
         Self::new(coin, addr, sign_r, sign_s)
     }
@@ -98,29 +98,35 @@ impl Transaction {
         }
     }
 
+    /// Get transaction message as hash of coin and address.
+    pub fn get_msg(&self) -> U256 {
+        Self::calc_msg(&self.coin, &self.addr)
+    }
+
     /// Get transaction hash.
     pub fn get_hash(&self) -> U256 {
-        Self::calc_hash(&self.coin, &self.addr)
+        hash_of_u256(&[&self.coin, &self.addr, &self.sign_r, &self.sign_s])
     }
 
     /// Get transaction owner (sender).
     pub fn get_owner(&self, schema: &Schema) -> U256 {
         schema.extract_public(
-            &self.get_hash(), 
+            &self.get_msg(), 
             &(self.sign_r.clone(), self.sign_s.clone())
         )
     }
 
+    /// Check signature with the given public key.
     pub fn check(&self, public: &U256, 
                  schema: &Schema) -> bool {
         schema.check_signature(
-            &self.get_hash(), public, 
+            &self.get_msg(), public, 
             &(self.sign_r.clone(), self.sign_s.clone())
         )
     }
 
-    /// Calculate transaction hash from the `coin` and `addr`.
-    pub fn calc_hash(coin: &U256, addr: &U256) -> U256 {
+    /// Calculate transaction message as hash of the `coin` and `addr`.
+    pub fn calc_msg(coin: &U256, addr: &U256) -> U256 {
         hash_of_u256(&[coin, addr])
     }
 }

@@ -8,12 +8,4 @@ pub mod edwards;
 pub mod crypto;
 pub mod coin;
 pub mod transaction;
-
-
-#[cfg(test)]
-mod tests {
-    // use super::*;
-
-    #[test]
-    fn test() {}
-}
+pub mod block;
