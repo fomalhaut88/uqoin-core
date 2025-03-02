@@ -3,6 +3,7 @@
 extern crate test;
 
 pub mod utils;
+pub mod hash;
 pub mod edwards;
 
 
