@@ -11,17 +11,18 @@ use crate::hash::*;
 pub struct Coin {
     number: U256,
     hash: U256,
-    block_hash: U256,    
+    block_hash: U256,
+    miner: U256,  
     value: u32,
 }
 
 
 impl Coin {
     /// Create a new coin having the number and the block_hash.
-    pub fn new(number: U256, block_hash: U256) -> Self {
-        let hash = Self::calc_hash(&number, &block_hash);
+    pub fn new(number: U256, block_hash: U256, miner: U256) -> Self {
+        let hash = Self::calc_hash(&number, &block_hash, &miner);
         let value = Self::calc_value(&hash);
-        Self { number, hash, block_hash, value }
+        Self { number, hash, block_hash, miner, value }
     }
 
     /// Check if the coin is valid. This means first 128 bit must be the same
@@ -45,6 +46,11 @@ impl Coin {
         &self.block_hash
     }
 
+    /// Miner address of the coin.
+    pub fn miner(&self) -> &U256 {
+        &self.miner
+    }
+
     /// Denomination level of the coin. It is a power of 2, for example,
     /// value = 11 means 2048 units.
     pub fn value(&self) -> u32 {
@@ -59,7 +65,8 @@ impl Coin {
     }
 
     /// Geterate a random coin having the given block hash.
-    pub fn gen_random<R: Rng>(rng: &mut R, block_hash: &U256) -> Self {
+    pub fn gen_random<R: Rng>(rng: &mut R, block_hash: &U256, 
+                              miner: &U256) -> Self {
         // Prefix from block_hash
         let prefix = &block_hash.as_array()[2..];
 
@@ -71,21 +78,21 @@ impl Coin {
         number.as_array_mut()[2..].clone_from_slice(prefix);
         
         // Return coin
-        Self::new(number, block_hash.clone())
+        Self::new(number, block_hash.clone(), miner.clone())
     }
 
     /// Mine iterator for the given block hash filteging by `min_value`.
     /// It uses one thread.
-    pub fn mine<R: Rng>(rng: &mut R, block_hash: &U256, 
+    pub fn mine<R: Rng>(rng: &mut R, block_hash: &U256, miner: &U256,
                         min_value: u32) -> impl Iterator<Item = Self> {
         std::iter::repeat(1)
-            .map(|_| Self::gen_random(rng, block_hash))
+            .map(|_| Self::gen_random(rng, block_hash, miner))
             .filter(move |coin| coin.value() >= min_value)
     }
 
     /// Calculate coin hash from the number and block hash.
-    pub fn calc_hash(number: &U256, block_hash: &U256) -> U256 {
-        hash_of_u256(&[&number, &block_hash])
+    pub fn calc_hash(number: &U256, block_hash: &U256, miner: &U256) -> U256 {
+        hash_of_u256(&[&number, &block_hash, &miner])
     }
 
     /// Calculate coin value from its hash.
@@ -110,24 +117,27 @@ mod tests {
     #[test]
     fn test_coin() {
         let number = U256::from_hex(
-            "59475E1B6C3C729B1BD5A34486AD423EDAFFEB954E9CCC2F9654C77873F81574"
+            "59475E1B6C3C729B1BD5A34486AD423E8CA979D814620ABF11DA0145E79722EF"
         );
         let block_hash = U256::from_hex(
             "59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
         );
+        let miner = U256::from_hex(
+            "E7646626CB303A9EEBAAD078ACD56328DC4BFFC745FD5063738D9E10BF513204"
+        );
 
-        let coin = Coin::new(number, block_hash);
+        let coin = Coin::new(number, block_hash, miner);
 
         assert_eq!(coin.is_valid(), true);
-        assert_eq!(coin.symbol(), "C1");
-        assert_eq!(coin.value(), 20);
+        assert_eq!(coin.symbol(), "C4");
+        assert_eq!(coin.value(), 22);
         assert_eq!(
             coin.hash().to_hex(), 
-            "00000D49EE12DA8FCB7DD134DB2C28BE8FB1B080B40907F1DD5827AFF0F3156B"
+            "000003B93917398F8A7FB7B5095F39C311327368C35056EC899038F8F00B7AC1"
         );
         assert_eq!(
             coin.to_string(), 
-            "C1 [59475E1B6C3C729B1BD5A34486AD423EDAFFEB954E9CCC2F9654C77873F81574]"
+            "C4 [59475E1B6C3C729B1BD5A34486AD423E8CA979D814620ABF11DA0145E79722EF]"
         );
     }
 
@@ -136,10 +146,13 @@ mod tests {
         let block_hash = U256::from_hex(
             "59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
         );
+        let miner = U256::from_hex(
+            "E7646626CB303A9EEBAAD078ACD56328DC4BFFC745FD5063738D9E10BF513204"
+        );
 
         let mut rng = rand::rng();
 
-        let coins = Coin::mine(&mut rng, &block_hash, 10)
+        let coins = Coin::mine(&mut rng, &block_hash, &miner, 10)
             .take(3).collect::<Vec<Coin>>();
 
         assert!(coins.iter().all(|coin| coin.is_valid()));
@@ -151,9 +164,12 @@ mod tests {
         let block_hash = U256::from_hex(
             "59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
         );
+        let miner = U256::from_hex(
+            "E7646626CB303A9EEBAAD078ACD56328DC4BFFC745FD5063738D9E10BF513204"
+        );
         let mut rng = rand::rng();
         bencher.iter(|| {
-            let _coin = Coin::gen_random(&mut rng, &block_hash);
+            let _coin = Coin::gen_random(&mut rng, &block_hash, &miner);
         });
     }
 
@@ -162,8 +178,11 @@ mod tests {
         let block_hash = U256::from_hex(
             "59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
         );
+        let miner = U256::from_hex(
+            "E7646626CB303A9EEBAAD078ACD56328DC4BFFC745FD5063738D9E10BF513204"
+        );
         let mut rng = rand::rng();
-        let mut it = Coin::mine(&mut rng, &block_hash, 10);
+        let mut it = Coin::mine(&mut rng, &block_hash, &miner, 10);
         bencher.iter(|| {
             let _coin = it.next();
         });
