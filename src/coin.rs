@@ -27,10 +27,10 @@ impl Coin {
     /// Check if the coin is valid. This means first 128 bit must be the same
     /// as block_hash.
     pub fn is_valid(&self) -> bool {
-        (self.number.as_array()[2] == 
-            self.miner.as_array()[2] ^ self.block_hash.as_array()[2]) &&
-        (self.number.as_array()[3] == 
-            self.miner.as_array()[3] ^ self.block_hash.as_array()[3])
+        (self.number.as_array()[0] == 
+            self.miner.as_array()[0] ^ self.block_hash.as_array()[0]) &&
+        (self.number.as_array()[1] == 
+            self.miner.as_array()[1] ^ self.block_hash.as_array()[1])
     }
 
     /// Number of the coin.
@@ -73,14 +73,14 @@ impl Coin {
         let mut number = U256::from(0);
 
         // Random 128-bit tail
-        number.as_array_mut()[0] = rng.random::<u64>();
-        number.as_array_mut()[1] = rng.random::<u64>();
+        number.as_array_mut()[2] = rng.random::<u64>();
+        number.as_array_mut()[3] = rng.random::<u64>();
 
         // Head is XOR of miner and block_hash
-        number.as_array_mut()[2] = 
-            miner.as_array()[2] ^ block_hash.as_array()[2];
-        number.as_array_mut()[3] = 
-            miner.as_array()[3] ^ block_hash.as_array()[3];
+        number.as_array_mut()[0] = 
+            miner.as_array()[0] ^ block_hash.as_array()[0];
+        number.as_array_mut()[1] = 
+            miner.as_array()[1] ^ block_hash.as_array()[1];
         
         // Return coin
         Self::new(number, block_hash.clone(), miner.clone())
@@ -122,10 +122,10 @@ mod tests {
     #[test]
     fn test_coin() {
         let number = U256::from_hex(
-            "BE23383DA70C4805F07F733C2A782116EBA847E8FB746AE45A1CC115EEB76BB3"
+            "AA813FCF71922F189450D4227C921DB4F2A814209B53610902737FBF0182EBBC"
         );
         let block_hash = U256::from_hex(
-            "59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
+            "0000001B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
         );
         let miner = U256::from_hex(
             "E7646626CB303A9EEBAAD078ACD56328DC4BFFC745FD5063738D9E10BF513204"
@@ -134,22 +134,22 @@ mod tests {
         let coin = Coin::new(number, block_hash, miner);
 
         assert_eq!(coin.is_valid(), true);
-        assert_eq!(coin.symbol(), "C2");
-        assert_eq!(coin.value(), 21);
+        assert_eq!(coin.symbol(), "C1");
+        assert_eq!(coin.value(), 20);
         assert_eq!(
             coin.hash().to_hex(), 
-            "0000067E6258ABA385258EB010E7C1C41988A440855091A48D30E768D55E5736"
+            "00000DE62F61A94997E66136A71E9881B87FFB970CA73051B8E5C3137012F1B7"
         );
         assert_eq!(
             coin.to_string(), 
-            "C2 [BE23383DA70C4805F07F733C2A782116EBA847E8FB746AE45A1CC115EEB76BB3]"
+            "C1 [AA813FCF71922F189450D4227C921DB4F2A814209B53610902737FBF0182EBBC]"
         );
     }
 
     #[test]
     fn test_mine() {
         let block_hash = U256::from_hex(
-            "59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
+            "0000001B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
         );
         let miner = U256::from_hex(
             "E7646626CB303A9EEBAAD078ACD56328DC4BFFC745FD5063738D9E10BF513204"
@@ -167,7 +167,7 @@ mod tests {
     #[bench]
     fn bench_gen_random(bencher: &mut Bencher) {
         let block_hash = U256::from_hex(
-            "59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
+            "0000001B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
         );
         let miner = U256::from_hex(
             "E7646626CB303A9EEBAAD078ACD56328DC4BFFC745FD5063738D9E10BF513204"
@@ -181,7 +181,7 @@ mod tests {
     #[bench]
     fn bench_mine_10(bencher: &mut Bencher) {
         let block_hash = U256::from_hex(
-            "59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
+            "0000001B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
         );
         let miner = U256::from_hex(
             "E7646626CB303A9EEBAAD078ACD56328DC4BFFC745FD5063738D9E10BF513204"
