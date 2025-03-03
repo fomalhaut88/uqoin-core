@@ -1,7 +1,6 @@
 //! Coin structure.
 
 use rand::Rng;
-use finitelib::prelude::*;
 
 use crate::utils::*;
 use crate::hash::*;
@@ -28,7 +27,8 @@ impl Coin {
     /// Check if the coin is valid. This means first 128 bit must be the same
     /// as block_hash.
     pub fn is_valid(&self) -> bool {
-        self.number.as_array()[2..] == self.block_hash.as_array()[2..]
+        self.number.as_array()[2..] == self.miner.as_array()[2..] &&
+            self.number.as_array()[1..2] == self.block_hash.as_array()[3..]
     }
 
     /// Number of the coin.
@@ -67,15 +67,17 @@ impl Coin {
     /// Geterate a random coin having the given block hash.
     pub fn gen_random<R: Rng>(rng: &mut R, block_hash: &U256, 
                               miner: &U256) -> Self {
-        // Prefix from block_hash
-        let prefix = &block_hash.as_array()[2..];
+        // Prefix from block_hash and miner
+        let prefix_miner = &miner.as_array()[2..];
+        let prefix_block_hash = &block_hash.as_array()[3..];
 
         // Suffix as random 128-bit value
-        let suffix = rng.random::<Bigi<2>>();
+        let suffix = rng.random::<u64>();
         
         // Concatenate prefix and suffix to get a new coin
-        let mut number: U256 = (&suffix).into();
-        number.as_array_mut()[2..].clone_from_slice(prefix);
+        let mut number: U256 = U256::from(suffix);
+        number.as_array_mut()[2..].clone_from_slice(prefix_miner);
+        number.as_array_mut()[1..2].clone_from_slice(prefix_block_hash);
         
         // Return coin
         Self::new(number, block_hash.clone(), miner.clone())
@@ -117,7 +119,7 @@ mod tests {
     #[test]
     fn test_coin() {
         let number = U256::from_hex(
-            "59475E1B6C3C729B1BD5A34486AD423E8CA979D814620ABF11DA0145E79722EF"
+            "E7646626CB303A9EEBAAD078ACD5632859475E1B6C3C729BCCAE9A3117234F15"
         );
         let block_hash = U256::from_hex(
             "59475E1B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
@@ -129,15 +131,15 @@ mod tests {
         let coin = Coin::new(number, block_hash, miner);
 
         assert_eq!(coin.is_valid(), true);
-        assert_eq!(coin.symbol(), "C4");
-        assert_eq!(coin.value(), 22);
+        assert_eq!(coin.symbol(), "C2");
+        assert_eq!(coin.value(), 21);
         assert_eq!(
             coin.hash().to_hex(), 
-            "000003B93917398F8A7FB7B5095F39C311327368C35056EC899038F8F00B7AC1"
+            "00000551042A5A97C3417B67EFB646D0849F114506A937AA3AF6DF50F1C295D1"
         );
         assert_eq!(
             coin.to_string(), 
-            "C4 [59475E1B6C3C729B1BD5A34486AD423E8CA979D814620ABF11DA0145E79722EF]"
+            "C2 [E7646626CB303A9EEBAAD078ACD5632859475E1B6C3C729BCCAE9A3117234F15]"
         );
     }
 

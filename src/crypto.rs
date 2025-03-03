@@ -51,9 +51,8 @@ impl Schema {
         let t = self.gen_key(rng);
         let r = self.curve.power(t.bit_iter());
         let sign_r = self.point_to_number(&r);
-        let q = &sign_r % &self.curve.order;
         let sign_s = self.field.div(
-            &self.field.add(msg, &self.field.mul(key, &q)),
+            &self.field.add(msg, &self.field.mul(key, &sign_r)),
             &t
         ).unwrap();
         (sign_r, sign_s)
@@ -62,28 +61,16 @@ impl Schema {
     /// Check ECDSA signature.
     pub fn check_signature(&self, msg: &U256, public: &U256, 
                            signature: &(U256, U256)) -> bool {
-        let (sign_r, sign_s) = signature;
-        let p = self.point_from_number(public).unwrap();
-        let q = sign_r % &self.curve.order;
-
-        let u = self.field.div(msg, sign_s).unwrap();
-        let v = self.field.div(&q, sign_s).unwrap();
-        let r = self.curve.add(
-            &self.curve.power(u.bit_iter()),
-            &self.curve.mul_scalar(&p, v.bit_iter()),
-        );
-
-        self.point_to_number(&r) == *sign_r
+        self.extract_public(msg, signature) == *public
     }
 
     /// Extract public from ECDSA signature.
     pub fn extract_public(&self, msg: &U256, signature: &(U256, U256)) -> U256 {
         let (sign_r, sign_s) = signature;
         let r = self.point_from_number(&sign_r).unwrap();
-        let q = sign_r % &self.curve.order;
 
-        let u = self.field.div(sign_s, &q).unwrap();
-        let v = self.field.div(msg, &q).unwrap();
+        let u = self.field.div(sign_s, &sign_r).unwrap();
+        let v = self.field.div(msg, &sign_r).unwrap();
         let p = self.curve.sub(
             &self.curve.mul_scalar(&r, u.bit_iter()),
             &self.curve.power(v.bit_iter())
