@@ -22,24 +22,33 @@ impl Schema {
         Self { curve, field }
     }
 
+    /// Generate a random private key.
+    pub fn gen_key<R: Rng>(&self, rng: &mut R) -> U256 {
+        &rng.random::<U256>() % &self.curve.order
+    }
+
+    /// Get public key from a private one.
+    pub fn get_public(&self, key: &U256) -> U256 {
+        let point = self.curve.power(key.bit_iter());
+        self.point_to_number(&point)
+    }
+
     /// Generate a key pair.
     pub fn gen_pair<R: Rng>(&self, rng: &mut R) -> (U256, U256) {
-        let key: U256 = rng.random();
-        let point = self.curve.power(key.bit_iter());
-        let public = self.point_to_number(&point);
+        let key = self.gen_key(rng);
+        let public = self.get_public(&key);
         (key, public)
     }
 
     /// Check the key pair.
     pub fn check_pair(&self, key: &U256, public: &U256) -> bool {
-        let point = self.curve.power(key.bit_iter());
-        self.point_to_number(&point) == *public
+        self.get_public(key) == *public
     }
 
     /// Build ECDSA signature.
     pub fn build_signature<R: Rng>(&self, rng: &mut R, msg: &U256, 
                                    key: &U256) -> (U256, U256) {
-        let t: U256 = rng.random();
+        let t = self.gen_key(rng);
         let r = self.curve.power(t.bit_iter());
         let sign_r = self.point_to_number(&r);
         let q = &sign_r % &self.curve.order;
@@ -258,6 +267,20 @@ mod tests {
 
         bencher.iter(|| {
             let _public = schema.extract_public(&msg, &signature);
+        });
+    }
+
+    #[bench]
+    fn bench_signature_together(bencher: &mut Bencher) {
+        let schema = Schema::new();
+        let mut rng = rand::rng();
+
+        bencher.iter(|| {
+            let (key, public) = schema.gen_pair(&mut rng);
+            let msg: U256 = rng.random();
+            let signature = schema.build_signature(&mut rng, &msg, &key);
+            let public_restored = schema.extract_public(&msg, &signature);
+            assert_eq!(public, public_restored);
         });
     }
 }
