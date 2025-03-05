@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-finitelib = "0.1.9"
+finitelib = "0.1.10"
 rand = "0.9.0"
 sha3 = "0.10.8"

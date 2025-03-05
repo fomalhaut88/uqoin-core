@@ -3,9 +3,11 @@ use rand::Rng;
 use crate::utils::*;
 use crate::hash::*;
 use crate::crypto::Schema;
+use crate::coin::CoinMap;
 
 
-/// Types of transaction.
+/// Types of transaction or group. In case of group Fee must be incorrect.
+#[derive(PartialEq)]
 pub enum Type {
     Transfer,
     Fee,
@@ -108,12 +110,17 @@ impl Transaction {
         hash_of_u256(&[&self.coin, &self.addr, &self.sign_r, &self.sign_s])
     }
 
-    /// Get transaction owner (sender).
-    pub fn get_owner(&self, schema: &Schema) -> U256 {
+    /// Get transaction sender.
+    pub fn get_sender(&self, schema: &Schema) -> U256 {
         schema.extract_public(
             &self.get_msg(), 
             &(self.sign_r.clone(), self.sign_s.clone())
         )
+    }
+
+    /// Get value of the coin.
+    pub fn get_value(&self, coin_map: &CoinMap) -> u64 {
+        coin_map[&self.coin].value()
     }
 
     /// Check signature with the given public key.
@@ -128,5 +135,81 @@ impl Transaction {
     /// Calculate transaction message as hash of the `coin` and `addr`.
     pub fn calc_msg(coin: &U256, addr: &U256) -> U256 {
         hash_of_u256(&[coin, addr])
+    }
+}
+
+
+/// Group of transactions structure.
+pub struct Group(Vec<Transaction>);
+
+
+impl Group {
+    pub fn new(transactions: Vec<Transaction>) -> Self {
+        Self(transactions)
+    }
+
+    pub fn transactions(&self) -> &[Transaction] {
+        &self.0
+    }
+
+    pub fn get_type(&self) -> Option<Type> {
+        if self.0.is_empty() {
+            None
+        } else {
+            match self.0[0].get_type() {
+                Type::Fee => None,
+                type_ => Some(type_),
+            }
+        }
+    }
+
+    pub fn get_sender(&self, schema: &Schema) -> Option<U256> {
+        if self.0.is_empty() {
+            None
+        } else {
+            match self.0[0].get_type() {
+                Type::Fee => None,
+                _ => {
+                    let sender = self.0[0].get_sender(schema);
+                    Some(sender)
+                },
+            }
+        }
+    }
+
+    pub fn get_validator(&self) -> Option<U256> {
+        None
+    }
+
+    pub fn is_ready(&self) -> bool {
+        match self.fee_transactions_iter() {
+            Some(mut it) => it.all(|tr| tr.get_type() == Type::Fee),
+            None => false,
+        }
+    }
+
+    pub fn is_complete(&self) -> bool {
+        true
+    }
+
+    pub fn get_fee(&self, coin_map: &CoinMap) -> Option<u64> {
+        Some(self.fee_transactions_iter()?
+                .map(|tr| tr.get_value(coin_map))
+                .sum())
+    }
+
+    pub fn complete(&mut self, _transactions: &[Transaction]) {}
+
+    pub fn add_fee(&mut self, _transactions: &[Transaction]) {}
+
+    fn fee_transactions_iter(&self) -> Option<impl Iterator<Item = &Transaction>> {
+        // TODO: validator transactions are not considered.
+        let fee_ix = match self.get_type()? {
+            Type::Transfer => 1,
+            Type::Split => 1,
+            Type::Merge => 3,
+            Type::Fee => 0,  // Not used because Fee cannot be a group type
+        };
+        Some(self.0[fee_ix..].iter())
     }
 }

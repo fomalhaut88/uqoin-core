@@ -1,18 +1,24 @@
 //! Coin structure.
 
+use std::collections::HashMap;
+
 use rand::Rng;
 
 use crate::utils::*;
 use crate::hash::*;
 
 
-/// Coin structure that keeps the numberm hash, block_hash and value.
+/// Map of coins number-coin
+pub type CoinMap = HashMap<U256, Coin>;
+
+
+/// Coin structure that keeps the numberm hash, block_hash and order.
 pub struct Coin {
     number: U256,
     hash: U256,
     block_hash: U256,
     miner: U256,  
-    value: u32,
+    order: u64,
 }
 
 
@@ -20,8 +26,8 @@ impl Coin {
     /// Create a new coin having the number and the block_hash.
     pub fn new(number: U256, block_hash: U256, miner: U256) -> Self {
         let hash = Self::calc_hash(&number, &block_hash, &miner);
-        let value = Self::calc_value(&hash);
-        Self { number, hash, block_hash, miner, value }
+        let order = Self::calc_order(&hash);
+        Self { number, hash, block_hash, miner, order }
     }
 
     /// Check if the coin is valid. This means first 128 bit must be the same
@@ -54,15 +60,15 @@ impl Coin {
     }
 
     /// Denomination level of the coin. It is a power of 2, for example,
-    /// value = 11 means 2048 units.
-    pub fn value(&self) -> u32 {
-        self.value
+    /// order = 11 means 2048 units.
+    pub fn value(&self) -> u64 {
+        1 << self.order
     }
 
     /// Symbol of the coin value.
     pub fn symbol(&self) -> String {
-        let letter: char = ('A' as u8 + (self.value / 10) as u8) as char;
-        let number: u32 = 1 << (self.value % 10);
+        let letter: char = ('A' as u8 + (self.order / 10) as u8) as char;
+        let number: u32 = 1 << (self.order % 10);
         format!("{}{}", letter, number)
     }
 
@@ -89,7 +95,7 @@ impl Coin {
     /// Mine iterator for the given block hash filteging by `min_value`.
     /// It uses one thread.
     pub fn mine<R: Rng>(rng: &mut R, block_hash: &U256, miner: &U256,
-                        min_value: u32) -> impl Iterator<Item = Self> {
+                        min_value: u64) -> impl Iterator<Item = Self> {
         std::iter::repeat(1)
             .map(|_| Self::gen_random(rng, block_hash, miner))
             .filter(move |coin| coin.value() >= min_value)
@@ -100,9 +106,9 @@ impl Coin {
         hash_of_u256(&[&number, &block_hash, &miner])
     }
 
-    /// Calculate coin value from its hash.
-    pub fn calc_value(hash: &U256) -> u32 {
-        256 - hash.bit_len() as u32
+    /// Calculate coin order from its hash.
+    pub fn calc_order(hash: &U256) -> u64 {
+        256 - hash.bit_len() as u64
     }
 }
 
@@ -135,7 +141,7 @@ mod tests {
 
         assert_eq!(coin.is_valid(), true);
         assert_eq!(coin.symbol(), "C1");
-        assert_eq!(coin.value(), 20);
+        assert_eq!(coin.value(), 1 << 20);
         assert_eq!(
             coin.hash().to_hex(), 
             "00000DE62F61A94997E66136A71E9881B87FFB970CA73051B8E5C3137012F1B7"
@@ -157,11 +163,11 @@ mod tests {
 
         let mut rng = rand::rng();
 
-        let coins = Coin::mine(&mut rng, &block_hash, &miner, 10)
+        let coins = Coin::mine(&mut rng, &block_hash, &miner, 1 << 10)
             .take(3).collect::<Vec<Coin>>();
 
         assert!(coins.iter().all(|coin| coin.is_valid()));
-        assert!(coins.iter().all(|coin| coin.value() >= 10));
+        assert!(coins.iter().all(|coin| coin.value() >= 1 << 10));
     }
 
     #[bench]
@@ -187,7 +193,7 @@ mod tests {
             "E7646626CB303A9EEBAAD078ACD56328DC4BFFC745FD5063738D9E10BF513204"
         );
         let mut rng = rand::rng();
-        let mut it = Coin::mine(&mut rng, &block_hash, &miner, 10);
+        let mut it = Coin::mine(&mut rng, &block_hash, &miner, 1 << 10);
         bencher.iter(|| {
             let _coin = it.next();
         });
