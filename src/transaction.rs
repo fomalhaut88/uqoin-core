@@ -17,6 +17,7 @@ pub enum Type {
 
 
 /// Transaction base structure.
+#[derive(Clone)]
 pub struct Transaction {
     pub coin: U256,
     pub addr: U256,
@@ -118,8 +119,13 @@ impl Transaction {
         )
     }
 
+    /// Get order of the coin.
+    pub fn get_order(&self, coin_map: &CoinMap) -> u64 {
+        coin_map[&self.coin].order()
+    }
+
     /// Get value of the coin.
-    pub fn get_value(&self, coin_map: &CoinMap) -> u64 {
+    pub fn get_value(&self, coin_map: &CoinMap) -> U256 {
         coin_map[&self.coin].value()
     }
 
@@ -139,77 +145,264 @@ impl Transaction {
 }
 
 
-/// Group of transactions structure.
+/// Group of transactions.
 pub struct Group(Vec<Transaction>);
 
 
 impl Group {
-    pub fn new(transactions: Vec<Transaction>) -> Self {
-        Self(transactions)
+    /// Create group from transactions. Validation is included, so if the
+    /// vector is not valid, `None` will be returned.
+    pub fn new(transactions: Vec<Transaction>, schema: &Schema, 
+               coin_map: &CoinMap) -> Option<Self> {
+        if Self::validate_transactions(&transactions, schema, coin_map) {
+            Some(Self(transactions))
+        } else {
+            None
+        }
     }
 
+    /// Try to create a group from the leading transactions in the given slice.
+    /// Fees are joined by the greedy approach.
+    pub fn from_slice(transactions: &[Transaction], schema: &Schema, 
+                      coin_map: &CoinMap) -> Option<Self> {
+        if transactions.is_empty() {
+            // `None` if the slice is empty
+            None
+        } else {
+            // Index where fee transactions start
+            let fee_ix = match transactions[0].get_type() {
+                Type::Split => 1,
+                Type::Merge => 3,
+                Type::Transfer => 1,
+                _ => 0,
+            };
+
+            if fee_ix == 0 {
+                // `None` if we start from a fee transaction
+                None
+            } else {
+                // We set `size` to `fee_ix` and increment it until the slice 
+                // ends or a non-fee transaction happens.
+                let mut size = fee_ix;
+
+                while (size < transactions.len()) && 
+                      (transactions[size].get_type() == Type::Fee) {
+                    size += 1;
+                }
+
+                // Try to create a group using validation in `Self::new`
+                Self::new(transactions[..size].to_vec(), schema, coin_map)
+            }
+        }
+    }
+
+    /// Accessor to the inner transactions.
     pub fn transactions(&self) -> &[Transaction] {
         &self.0
     }
 
-    pub fn get_type(&self) -> Option<Type> {
-        if self.0.is_empty() {
-            None
-        } else {
-            match self.0[0].get_type() {
-                Type::Fee => None,
-                type_ => Some(type_),
-            }
+    /// Get type of the group.
+    pub fn get_type(&self) -> Type {
+        self.0[0].get_type()
+    }
+
+    /// Get sender of the group.
+    pub fn get_sender(&self, schema: &Schema) -> U256 {
+        self.0[0].get_sender(schema)
+    }
+
+    /// Get total number of transactions.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Get total value of the group.
+    pub fn get_value(&self, coin_map: &CoinMap) -> U256 {
+        match self.get_type() {
+            Type::Split => self.0[0].get_value(coin_map),
+            Type::Merge => &self.0[0].get_value(coin_map) << 1,
+            Type::Transfer => self.0[0].get_value(coin_map),
+            _ => panic!("Invalid transactions in the group."),
         }
     }
 
+    /// Get total fee of the group.
+    pub fn get_fee(&self, coin_map: &CoinMap) -> U256 {
+        let fee_ix = match self.get_type() {
+            Type::Split => 1,
+            Type::Merge => 3,
+            Type::Transfer => 1,
+            _ => panic!("Invalid transactions in the group."),
+        };
+        self.0[fee_ix..].iter().map(|tr| tr.get_value(coin_map))
+            .fold(U256::from(0), |s, v| &s + &v)
+    }
+
+    /// Get number or required response transactions from the validator.
+    pub fn ext_size(&self) -> usize {
+        match self.get_type() {
+            Type::Split => 3,
+            Type::Merge => 1,
+            Type::Transfer => 0,
+            _ => panic!("Invalid transactions in the group."),
+        }
+    }
+
+    /// Validate transactions for the group creation.
+    pub fn validate_transactions(transactions: &[Transaction], schema: &Schema, 
+                                 coin_map: &CoinMap) -> bool {
+        if transactions.is_empty() {
+            // False if no transactions in the slice
+            false
+        } else {
+            // Get the first sender
+            let sender = transactions[0].get_sender(schema);
+
+            // Check same sender
+            let is_same_sender = transactions.iter()
+                .all(|tr| tr.get_sender(schema) == sender);
+            
+            if is_same_sender {
+                // Check the first type
+                match transactions[0].get_type() {
+                    // False if the first transaction is fee
+                    Type::Fee => false,
+
+                    // Check the rest fees if split
+                    Type::Split => transactions[1..].iter()
+                        .all(|tr| tr.get_type() == Type::Fee),
+
+                    // Check fees, other types and values for the rest if merge
+                    Type::Merge => {
+                        let fee_check = transactions[3..].iter()
+                            .all(|tr| tr.get_type() == Type::Fee);
+
+                        let type_check = 
+                            (transactions[1].get_type() == Type::Merge) && 
+                            (transactions[2].get_type() == Type::Merge);
+
+                        let order0 = transactions[0].get_order(coin_map);
+                        let order1 = transactions[1].get_order(coin_map);
+                        let order2 = transactions[2].get_order(coin_map);
+
+                        let order_check = (order1 + 1 == order0) && 
+                                          (order2 + 1 == order0);
+
+                        fee_check && type_check && order_check
+                    },
+
+                    // Check the rest fees if transfer
+                    Type::Transfer => transactions[1..].iter()
+                        .all(|tr| tr.get_type() == Type::Fee),
+                }
+            } else {
+                // False if senders differ
+                false
+            }
+        }
+    }
+}
+
+
+/// Extension for the group of transactions. It must be filled by the validator
+/// in split or merge types.
+pub struct Ext(Vec<Transaction>);
+
+
+impl Ext {
+    /// Create a new extension from transactions.
+    pub fn new(transactions: Vec<Transaction>, schema: &Schema, 
+               coin_map: &CoinMap) -> Option<Self> {
+        if Self::validate_transactions(&transactions, schema, coin_map) {
+            Some(Self(transactions))
+        } else {
+            None
+        }
+    }
+
+    /// Accessor to the inner transactions.
+    pub fn transactions(&self) -> &[Transaction] {
+        &self.0
+    }
+
+    /// Get type of the extension.
+    pub fn get_type(&self) -> Type {
+        match self.0.len() {
+            0 => Type::Transfer,
+            1 => Type::Merge,
+            3 => Type::Split,
+            _ => panic!("Invalid size of extension."),
+        }
+    }
+
+    /// Get sender of the extension.
     pub fn get_sender(&self, schema: &Schema) -> Option<U256> {
         if self.0.is_empty() {
             None
         } else {
-            match self.0[0].get_type() {
-                Type::Fee => None,
-                _ => {
-                    let sender = self.0[0].get_sender(schema);
-                    Some(sender)
-                },
-            }
+            Some(self.0[0].get_sender(schema))
         }
     }
 
-    pub fn get_validator(&self) -> Option<U256> {
-        None
+    /// Get total number of transactions.
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 
-    pub fn is_ready(&self) -> bool {
-        match self.fee_transactions_iter() {
-            Some(mut it) => it.all(|tr| tr.get_type() == Type::Fee),
-            None => false,
+    /// Get total value of the extension.
+    pub fn get_value(&self, coin_map: &CoinMap) -> U256 {
+        match self.0.len() {
+            0 => U256::from(0),
+            1 => self.0[0].get_value(coin_map),
+            3 => &self.0[0].get_value(coin_map) << 1,
+            _ => panic!("Invalid transactions in the group."),
         }
     }
 
-    pub fn is_complete(&self) -> bool {
-        true
-    }
+    /// Validate transactions for the extension creation.
+    pub fn validate_transactions(transactions: &[Transaction], schema: &Schema, 
+                                 coin_map: &CoinMap) -> bool {
+        // Check the size
+        match transactions.len() {
+            // `true` for the transfer type
+            0 => true,
 
-    pub fn get_fee(&self, coin_map: &CoinMap) -> Option<u64> {
-        Some(self.fee_transactions_iter()?
-                .map(|tr| tr.get_value(coin_map))
-                .sum())
-    }
+            // Check the type for the merge type
+            1 => transactions[0].get_type() == Type::Transfer,
 
-    pub fn complete(&mut self, _transactions: &[Transaction]) {}
+            // Complex check for the split check
+            3 => {
+                // Get the first sender and addr
+                let sender = transactions[0].get_sender(schema);
+                let addr = &transactions[0].addr;
 
-    pub fn add_fee(&mut self, _transactions: &[Transaction]) {}
+                // Check transfer type
+                let type_check = transactions.iter()
+                    .all(|tr| tr.get_type() == Type::Transfer);
 
-    fn fee_transactions_iter(&self) -> Option<impl Iterator<Item = &Transaction>> {
-        // TODO: validator transactions are not considered.
-        let fee_ix = match self.get_type()? {
-            Type::Transfer => 1,
-            Type::Split => 1,
-            Type::Merge => 3,
-            Type::Fee => 0,  // Not used because Fee cannot be a group type
-        };
-        Some(self.0[fee_ix..].iter())
+                // Check same sender
+                let sender_check = 
+                    (transactions[1].get_sender(schema) == sender) && 
+                    (transactions[2].get_sender(schema) == sender);
+
+                // Check same addr
+                let addr_check = 
+                    (&transactions[1].addr == addr) && 
+                    (&transactions[2].addr == addr);
+
+                // Check order
+                let order0 = transactions[0].get_order(coin_map);
+                let order1 = transactions[1].get_order(coin_map);
+                let order2 = transactions[2].get_order(coin_map);
+
+                let order_check = (order1 + 1 == order0) && 
+                                  (order2 + 1 == order0);
+
+                type_check && sender_check && addr_check && order_check
+            },
+
+            // Panic if the wrong size
+            _ => panic!("Invalid size of extension."),
+        }
     }
 }

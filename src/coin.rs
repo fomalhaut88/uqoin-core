@@ -59,10 +59,15 @@ impl Coin {
         &self.miner
     }
 
+    /// Power of the denomination level, log2 of value.
+    pub fn order(&self) -> u64 {
+        self.order
+    }
+
     /// Denomination level of the coin. It is a power of 2, for example,
     /// order = 11 means 2048 units.
-    pub fn value(&self) -> u64 {
-        1 << self.order
+    pub fn value(&self) -> U256 {
+        &U256::from(1) << (self.order as usize)
     }
 
     /// Symbol of the coin value.
@@ -95,10 +100,10 @@ impl Coin {
     /// Mine iterator for the given block hash filteging by `min_value`.
     /// It uses one thread.
     pub fn mine<R: Rng>(rng: &mut R, block_hash: &U256, miner: &U256,
-                        min_value: u64) -> impl Iterator<Item = Self> {
+                        min_order: u64) -> impl Iterator<Item = Self> {
         std::iter::repeat(1)
             .map(|_| Self::gen_random(rng, block_hash, miner))
-            .filter(move |coin| coin.value() >= min_value)
+            .filter(move |coin| coin.order >= min_order)
     }
 
     /// Calculate coin hash from the number and block hash.
@@ -141,7 +146,7 @@ mod tests {
 
         assert_eq!(coin.is_valid(), true);
         assert_eq!(coin.symbol(), "C1");
-        assert_eq!(coin.value(), 1 << 20);
+        assert_eq!(coin.value(), &U256::from(1) << 20);
         assert_eq!(
             coin.hash().to_hex(), 
             "00000DE62F61A94997E66136A71E9881B87FFB970CA73051B8E5C3137012F1B7"
@@ -163,11 +168,11 @@ mod tests {
 
         let mut rng = rand::rng();
 
-        let coins = Coin::mine(&mut rng, &block_hash, &miner, 1 << 10)
+        let coins = Coin::mine(&mut rng, &block_hash, &miner, 10)
             .take(3).collect::<Vec<Coin>>();
 
         assert!(coins.iter().all(|coin| coin.is_valid()));
-        assert!(coins.iter().all(|coin| coin.value() >= 1 << 10));
+        assert!(coins.iter().all(|coin| coin.value() >= &U256::from(1) << 10));
     }
 
     #[bench]
@@ -193,7 +198,7 @@ mod tests {
             "E7646626CB303A9EEBAAD078ACD56328DC4BFFC745FD5063738D9E10BF513204"
         );
         let mut rng = rand::rng();
-        let mut it = Coin::mine(&mut rng, &block_hash, &miner, 1 << 10);
+        let mut it = Coin::mine(&mut rng, &block_hash, &miner, 10);
         bencher.iter(|| {
             let _coin = it.next();
         });
