@@ -108,7 +108,7 @@ impl Coin {
 
     /// Calculate coin hash from the number and block hash.
     pub fn calc_hash(number: &U256, block_hash: &U256, miner: &U256) -> U256 {
-        hash_of_u256(&[&number, &block_hash, &miner])
+        hash_of_u256([number, block_hash, miner].into_iter())
     }
 
     /// Calculate coin order from its hash.

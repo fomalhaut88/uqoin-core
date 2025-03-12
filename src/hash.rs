@@ -4,7 +4,7 @@ use crate::utils::*;
 
 
 /// Get SHA3 hash of a slice of U256.
-pub fn hash_of_u256(elems: &[&U256]) -> U256 {
+pub fn hash_of_u256<'a, I: Iterator<Item = &'a U256>>(elems: I) -> U256 {
     let mut hasher = Sha3_256::new();
     for elem in elems {
         hasher.update(elem.to_bytes());

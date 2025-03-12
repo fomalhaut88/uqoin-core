@@ -108,7 +108,9 @@ impl Transaction {
 
     /// Get transaction hash.
     pub fn get_hash(&self) -> U256 {
-        hash_of_u256(&[&self.coin, &self.addr, &self.sign_r, &self.sign_s])
+        hash_of_u256(
+            [&self.coin, &self.addr, &self.sign_r, &self.sign_s].into_iter()
+        )
     }
 
     /// Get transaction sender.
@@ -140,7 +142,7 @@ impl Transaction {
 
     /// Calculate transaction message as hash of the `coin` and `addr`.
     pub fn calc_msg(coin: &U256, addr: &U256) -> U256 {
-        hash_of_u256(&[coin, addr])
+        hash_of_u256([coin, addr].into_iter())
     }
 }
 
