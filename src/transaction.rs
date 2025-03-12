@@ -1,7 +1,6 @@
 use rand::Rng;
 
 use crate::utils::*;
-use crate::hash::*;
 use crate::crypto::Schema;
 use crate::coin::CoinMap;
 

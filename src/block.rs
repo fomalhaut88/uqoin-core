@@ -1,15 +1,8 @@
-use std::iter;
-
 use rand::Rng;
 use sha3::{Sha3_256, Digest};
 
 use crate::utils::*;
-use crate::hash::*;
 use crate::transaction::Transaction;
-
-
-/// Mining complexity (number of leading zeros for empty block).
-const COMPLEXITY: usize = 32;
 
 
 /// Basic structure for block.
@@ -46,19 +39,22 @@ impl Block {
     }
 
     /// Chech if the hash corresponds to the necessary size.
-    pub fn is_hash_valid(hash_bytes: &[u8], size: usize) -> bool {
-        // TODO: Implement the algorithm.
-        true
+    pub fn is_hash_valid(hash_bytes: &[u8], limit_hash_bytes: &[u8]) -> bool {
+        hash_bytes <= limit_hash_bytes
     }
 
-    /// Find correct nonce to mine the block.
+    /// Find correct nonce bytes to mine the block.
     pub fn mine<R: Rng>(rng: &mut R, block_hash_prev: &U256, validator: &U256, 
-                        transactions: &[Transaction]) -> U256 {
+                        transactions: &[Transaction], 
+                        complexity: usize) -> [u8; 32] {
         // Calculate the message bytes
         let msg = Self::calc_msg(block_hash_prev, validator, transactions);
 
         // Number of transactions
         let size = transactions.len();
+
+        // Calculate limit hash
+        let limit_hash = Self::calc_limit_hash(size, complexity);
 
         // Initialize SHA3 hasher with the block message
         let mut hasher = Sha3_256::new();
@@ -73,15 +69,89 @@ impl Block {
             let nonce_bytes: [u8; 32] = rng.random();
 
             // Update the hasher with the generated nonce
-            hasher.update(nonce_bytes);
+            hasher_clone.update(nonce_bytes);
 
             // Get the bytes of the final hash
             let hash_bytes = hasher_clone.finalize();
 
             // If the hash is valid return the generated nonce and U256
-            if Self::is_hash_valid(&hash_bytes, size) {
-                return U256::from_bytes(&nonce_bytes);
+            if Self::is_hash_valid(&hash_bytes, &limit_hash) {
+                return nonce_bytes;
             }
         }
+    }
+
+    /// Calculate maximum allowed block hash depending on the size
+    fn calc_limit_hash(size: usize, complexity: usize) -> Vec<u8> {
+        let mut num = U256::from(1);
+        num <<= 255 - complexity;
+        let bytes = num.divide_unit(size as u64 + 1).unwrap().0.to_bytes();
+        bytes.into_iter().rev().collect::<Vec<u8>>()
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test::Bencher;
+    use crate::crypto::Schema;
+
+    #[test]
+    fn test_mine() {
+        // Best value is complexity = 24 that corresponds to ~10 seconds 
+        // per empty block (for --release, 1 core, desktop)
+        let complexity = 8;
+
+        // Initial arguments
+        let mut rng = rand::rng();
+        let schema = Schema::new();
+
+        let block_hash_prev: U256 = rng.random();
+        let validator: U256 = schema.gen_pair(&mut rng).1;
+
+        let transactions: Vec<Transaction> = vec![];
+
+        // Mining the nonce
+        let nonce_bytes = Block::mine(&mut rng, &block_hash_prev, &validator, 
+                                      &transactions, complexity);
+
+        // Calculate hash
+        let msg = Block::calc_msg(&block_hash_prev, &validator, &transactions);
+        let nonce = U256::from_bytes(&nonce_bytes);
+        let hash = hash_of_u256([&msg, &nonce].into_iter());
+
+        // Calculate limit hash
+        let limit_hash = Block::calc_limit_hash(transactions.len(), complexity);
+
+        // Check that the hash is valid
+        assert!(hash.to_bytes() <= limit_hash);
+        assert!(Block::is_hash_valid(&hash.to_bytes(), &limit_hash));
+    }
+
+    #[bench]
+    fn bench_mine(bencher: &mut Bencher) {
+        let size = 10;
+
+        let mut rng = rand::rng();
+        let schema = Schema::new();
+
+        let block_hash_prev: U256 = rng.random();
+        let validator: U256 = schema.gen_pair(&mut rng).1;
+        let coin: U256 = rng.random();
+        let addr: U256 = rng.random();
+        let key: U256 = schema.gen_key(&mut rng);
+
+        let transactions: Vec<Transaction> = vec![
+            Transaction::build(
+                &mut rng, coin.clone(), addr.clone(), &key, &schema
+            );
+            size
+        ];
+
+        bencher.iter(|| {
+            let _nonce = Block::mine(&mut rng, &block_hash_prev, &validator, 
+                                     &transactions, 0);
+        });
     }
 }

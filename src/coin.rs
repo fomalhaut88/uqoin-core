@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use rand::Rng;
 
 use crate::utils::*;
-use crate::hash::*;
 
 
 /// Map of coins number-coin

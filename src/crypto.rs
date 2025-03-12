@@ -47,7 +47,7 @@ impl Schema {
 
     /// Build ECDSA signature.
     pub fn build_signature<R: Rng>(&self, rng: &mut R, msg: &U256, 
-                                   key: &U256) -> (U256, U256) {
+                                   key: &U256) -> Signature {
         let t = self.gen_key(rng);
         let r = self.curve.power(t.bit_iter());
         let sign_r = self.point_to_number(&r);
@@ -60,12 +60,12 @@ impl Schema {
 
     /// Check ECDSA signature.
     pub fn check_signature(&self, msg: &U256, public: &U256, 
-                           signature: &(U256, U256)) -> bool {
+                           signature: &Signature) -> bool {
         self.extract_public(msg, signature) == *public
     }
 
     /// Extract public from ECDSA signature.
-    pub fn extract_public(&self, msg: &U256, signature: &(U256, U256)) -> U256 {
+    pub fn extract_public(&self, msg: &U256, signature: &Signature) -> U256 {
         let (sign_r, sign_s) = signature;
         let r = self.point_from_number(&sign_r).unwrap();
 
