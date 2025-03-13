@@ -164,8 +164,8 @@ impl Group {
 
     /// Try to create a group from the leading transactions in the given slice.
     /// Fees are joined by the greedy approach.
-    pub fn from_slice(transactions: &[Transaction], schema: &Schema, 
-                      coin_map: &CoinMap) -> Option<Self> {
+    pub fn from_vec(transactions: &mut Vec<Transaction>, schema: &Schema, 
+                    coin_map: &CoinMap) -> Option<Self> {
         if transactions.is_empty() {
             // `None` if the slice is empty
             None
@@ -192,7 +192,8 @@ impl Group {
                 }
 
                 // Try to create a group using validation in `Self::new`
-                Self::new(transactions[..size].to_vec(), schema, coin_map)
+                let trs = vec_split_left(transactions, size);
+                Self::new(trs, schema, coin_map)
             }
         }
     }
@@ -215,6 +216,16 @@ impl Group {
     /// Get total number of transactions.
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    /// Get order of the main coins.
+    pub fn get_order(&self, coin_map: &CoinMap) -> u64 {
+        match self.get_type() {
+            Type::Split => self.0[0].get_order(coin_map),
+            Type::Merge => self.0[0].get_order(coin_map) + 1,
+            Type::Transfer => self.0[0].get_order(coin_map),
+            _ => panic!("Invalid transactions in the group."),
+        }
     }
 
     /// Get total value of the group.
@@ -348,6 +359,16 @@ impl Ext {
     /// Get total number of transactions.
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    /// Get order of the main coins in the extension.
+    pub fn get_order(&self, coin_map: &CoinMap) -> u64 {
+        match self.0.len() {
+            0 => 0,
+            1 => self.0[0].get_order(coin_map),
+            3 => &self.0[0].get_order(coin_map) + 1,
+            _ => panic!("Invalid transactions in the group."),
+        }
     }
 
     /// Get total value of the extension.
