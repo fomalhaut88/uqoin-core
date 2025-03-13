@@ -8,3 +8,4 @@ pub mod crypto;
 pub mod coin;
 pub mod transaction;
 pub mod block;
+pub mod blockchain;
