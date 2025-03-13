@@ -42,48 +42,42 @@ impl Transaction {
 
     /// Prepare transactions for transfer.
     pub fn prepare_transfer<R: Rng>(rng: &mut R, key: &U256, coin: &U256, 
-                                    addr: &U256, fee: Option<&U256>,
+                                    addr: &U256, fee_coins: &[U256],
                                     schema: &Schema) -> Vec<Self> {
         let mut res = vec![
             Self::build(rng, coin.clone(), addr.clone(), key, schema)
         ];
-        if let Some(fee_coin) = fee {
-            res.push(
-                Self::build(rng, fee_coin.clone(), U256::from(0), key, schema)
-            )
-        }
+        res.extend(fee_coins.iter().map(|fee_coin| 
+            Self::build(rng, fee_coin.clone(), U256::from(0), key, schema)
+        ));
         res
     }
 
     /// Prepare transactions for split.
     pub fn prepare_split<R: Rng>(rng: &mut R, key: &U256, coin: &U256, 
-                                 fee: Option<&U256>,
+                                 fee_coins: &[U256],
                                  schema: &Schema) -> Vec<Self> {
         let mut res = vec![
             Self::build(rng, coin.clone(), U256::from(1), key, schema)
         ];
-        if let Some(fee_coin) = fee {
-            res.push(
-                Self::build(rng, fee_coin.clone(), U256::from(0), key, schema)
-            )
-        }
+        res.extend(fee_coins.iter().map(|fee_coin| 
+            Self::build(rng, fee_coin.clone(), U256::from(0), key, schema)
+        ));
         res
     }
 
     /// Prepare transactions for merge.
     pub fn prepare_merge<R: Rng>(rng: &mut R, key: &U256, coins: [&U256; 3], 
-                                 fee: Option<&U256>,
+                                 fee_coins: &[U256],
                                  schema: &Schema) -> Vec<Self> {
         let mut res = vec![
             Self::build(rng, coins[0].clone(), U256::from(2), key, schema),
             Self::build(rng, coins[1].clone(), U256::from(2), key, schema),
             Self::build(rng, coins[2].clone(), U256::from(2), key, schema),
         ];
-        if let Some(fee_coin) = fee {
-            res.push(
-                Self::build(rng, fee_coin.clone(), U256::from(0), key, schema)
-            )
-        }
+        res.extend(fee_coins.iter().map(|fee_coin| 
+            Self::build(rng, fee_coin.clone(), U256::from(0), key, schema)
+        ));
         res
     }
 
@@ -427,4 +421,28 @@ impl Ext {
             _ => panic!("Invalid size of extension."),
         }
     }
+}
+
+
+/// Try to split transactions into groups and extensions. In case of not valid
+/// `transactions` the iterator stops until the first error, so for the
+/// validation purpose check the total size of yielded groups and extensions.
+pub fn group_transactions(mut transactions: Vec<Transaction>, schema: &Schema, 
+                          coin_map: &CoinMap) -> 
+                          impl Iterator<Item = (Group, Ext)> {
+    std::iter::from_fn(move || {
+        if let Some(group) = Group::from_vec(&mut transactions, schema, 
+                                             coin_map) {
+            let ext_size = group.ext_size();
+            let ext_trs = vec_split_left(&mut transactions, ext_size);
+
+            if let Some(ext) = Ext::new(ext_trs, schema, coin_map) {
+                Some((group, ext))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    })
 }

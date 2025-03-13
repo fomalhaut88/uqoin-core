@@ -2,7 +2,7 @@ use rand::Rng;
 use sha3::{Sha3_256, Digest};
 
 use crate::utils::*;
-use crate::transaction::{Type, Transaction, Group, Ext};
+use crate::transaction::{Type, Transaction, group_transactions};
 use crate::crypto::Schema;
 use crate::coin::CoinMap;
 
@@ -54,46 +54,32 @@ impl Block {
     pub fn validate_transactions(transactions: &[Transaction], 
                                  validator: &U256, schema: &Schema, 
                                  coin_map: &CoinMap) -> bool {
-        // Copy transactions into a vector
-        let mut transactions = transactions.to_vec();
+        // Set a countdown for groupped transactions
+        let mut countdown = transactions.len();
 
-        // Loop for transactions
-        while !transactions.is_empty() {
-            // Try to create a group of transactions
-            let group = Group::from_vec(&mut transactions, schema, coin_map);
-
-            // Check the group is created
-            if let Some(group) = group {
-                // Get extension transactions
-                let ext_size = group.ext_size();
-                let ext_trs = vec_split_left(&mut transactions, ext_size);
-
-                // Try to create the extension (empty `trs` is fine)
-                if let Some(ext) = Ext::new(ext_trs, schema, coin_map) {
-                    // Check validator
-                    if let Some(ext_sender) = ext.get_sender(schema) {
-                        if &ext_sender != validator {
-                            return false;
-                        }
-                    }
-
-                    // Check value
-                    if ext.get_type() != Type::Transfer {
-                        let group_order = group.get_order(coin_map);
-                        let ext_order = ext.get_order(coin_map);
-                        if group_order != ext_order {
-                            return false;
-                        }
-                    }
-                } else {
+        // Loop for groups and extensions
+        for (group, ext) in group_transactions(transactions.to_vec(), schema, 
+                                               coin_map) {
+            // Check validator
+            if let Some(ext_sender) = ext.get_sender(schema) {
+                if &ext_sender != validator {
                     return false;
                 }
-            } else {
-                return false;
             }
+
+            // Check value
+            if ext.get_type() != Type::Transfer {
+                if group.get_order(coin_map) != ext.get_order(coin_map) {
+                    return false;
+                }
+            }
+
+            // Decrement the countdown
+            countdown -= group.len() + ext.len();
         }
 
-        true
+        // Return `true` if all transactions have been groupped else `false`
+        countdown == 0
     }
 
     /// Validate hash for the certain complexity.
