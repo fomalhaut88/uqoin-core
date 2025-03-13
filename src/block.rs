@@ -10,8 +10,8 @@ use crate::coin::CoinMap;
 /// Basic structure for block.
 #[derive(Clone)]
 pub struct Block {
-    pub ix: usize,
-    pub size: usize,
+    pub ix: u64,
+    pub size: u64,
     pub validator: U256,
     pub nonce: U256,
     pub hash: U256,
@@ -20,13 +20,13 @@ pub struct Block {
 
 impl Block {
     /// New block.
-    pub fn new(ix: usize, size: usize, validator: U256, nonce: U256, 
+    pub fn new(ix: u64, size: u64, validator: U256, nonce: U256, 
                hash: U256) -> Self {
         Self { ix, size, validator, nonce, hash }
     }
 
     /// Build a new block for the transactions. It validates the final hash.
-    pub fn build(ix: usize, block_hash_prev: &U256, validator: U256, 
+    pub fn build(ix: u64, block_hash_prev: &U256, validator: U256, 
                  transactions: &[Transaction], nonce: U256,
                  complexity: usize, schema: &Schema, 
                  coin_map: &CoinMap) -> Option<Self> {
@@ -41,7 +41,7 @@ impl Block {
 
             // Validate hash
             if Self::validate_hash(&hash, transactions.len(), complexity) {
-                Some(Self::new(ix, transactions.len(), validator, nonce, 
+                Some(Self::new(ix, transactions.len() as u64, validator, nonce, 
                                hash))
             } else {
                 None

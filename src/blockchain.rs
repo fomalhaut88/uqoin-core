@@ -70,7 +70,7 @@ impl Blockchain {
                                            TokioResult<Vec<Transaction>> {
         let block = self.block_col.lock().await.get(bix).await?;
         self.transaction_col.lock().await
-            .get_many(block.ix, block.size).await
+            .get_many(block.ix as usize, block.size as usize).await
     }
 
     /// Push new block with transactions. The function returns the number of 
@@ -80,8 +80,8 @@ impl Blockchain {
                                 TokioResult<usize> {
         let ix = self.transaction_col.lock().await
             .push_many(transactions).await?;
-        let block = Block::new(ix, transactions.len(), validator.clone(), 
-                               nonce.clone(), hash.clone());
+        let block = Block::new(ix as u64, transactions.len() as u64,
+                               validator.clone(), nonce.clone(), hash.clone());
         let bix = self.block_col.lock().await.push(&block).await?;
         Ok(bix)
     }
@@ -90,7 +90,7 @@ impl Blockchain {
     pub async fn truncate(&self, block_count: usize) -> TokioResult<()> {
         let block = self.get_block(block_count).await?;
         self.block_col.lock().await.resize(block_count).await?;
-        self.transaction_col.lock().await.resize(block.ix).await?;
+        self.transaction_col.lock().await.resize(block.ix as usize).await?;
         Ok(())
     }
 }
