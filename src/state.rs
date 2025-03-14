@@ -13,6 +13,7 @@ const GENESIS_HASH: &str =
 
 
 /// Information about coin.
+#[derive(Clone)]
 pub struct CoinInfo {
     /// Order of the coin (value is 2^order)
     pub order: u64,
@@ -26,6 +27,7 @@ pub struct CoinInfo {
 
 
 /// Information about the last block.
+#[derive(Clone)]
 pub struct LastBlockInfo {
     /// Last block number.
     pub bix: u64,
@@ -37,10 +39,11 @@ pub struct LastBlockInfo {
 
 /// Uqoin state for fast access to the last block, coin and ownership
 /// information.
+#[derive(Clone)]
 pub struct State {
     coin_owner_map: HashMap<U256, U256>,
     coin_info_map: HashMap<U256, CoinInfo>,
-    owner_coin_map: HashMap<U256, HashSet<U256>>,
+    owner_coin_map: HashMap<U256, HashMap<u64, HashSet<U256>>>,
     last_block_info: LastBlockInfo,
 }
 
@@ -70,7 +73,7 @@ impl State {
     }
 
     /// Get coins of the owner.
-    pub fn get_coins(&self, owner: &U256) -> &HashSet<U256> {
+    pub fn get_coins(&self, owner: &U256) -> &HashMap<u64, HashSet<U256>> {
         &self.owner_coin_map[owner]
     }
 
@@ -108,33 +111,27 @@ impl State {
                     receiver.clone();
 
                 // Remove coin from the sender
-                self.owner_coin_map.get_mut(&sender).unwrap()
-                    .remove(&transaction.coin);
+                self.owner_coin_remove(&sender, &transaction.coin);
 
                 // Add coin to the receiver
-                self.owner_coin_map.get_mut(&receiver).unwrap()
-                    .insert(transaction.coin.clone());
+                self.owner_coin_add(&receiver, &transaction.coin);
             } else {
-                // Calculate coin properties
+                // Calculate coin order
                 let coin = Coin::new(transaction.coin.clone(), 
                                      block.hash_prev.clone(), sender.clone());
 
-                // Create coin info
-                let coin_info = CoinInfo {
-                    order: coin.order(),
-                    bix, tix,
-                };
-
                 // Insert into coin info map
-                self.coin_info_map.insert(transaction.coin.clone(), coin_info);
+                self.coin_info_map.insert(
+                    transaction.coin.clone(), 
+                    CoinInfo { order: coin.order(), bix, tix }
+                );
 
                 // Insert into coin owner map
                 self.coin_owner_map.insert(transaction.coin.clone(), 
                                            receiver.clone());
 
                 // Add coin to the receiver
-                self.owner_coin_map.get_mut(&receiver).unwrap()
-                    .insert(transaction.coin.clone());
+                self.owner_coin_add(&receiver, &transaction.coin);
             }
         }
 
@@ -171,28 +168,64 @@ impl State {
 
             // Check the coin was mined in this block
             if self.coin_info_map[&transaction.coin].tix == tix {
+                // Remove from owner coin map
+                self.owner_coin_remove(&receiver, &transaction.coin);
+
                 // Remove from coin owner map
                 self.coin_owner_map.remove(&transaction.coin);
 
                 // Remove from coin info map
                 self.coin_info_map.remove(&transaction.coin);
-
-                // Remove from owner coin map
-                self.owner_coin_map.get_mut(&receiver).unwrap()
-                    .remove(&transaction.coin);
             } else {
+                // Remove coin from the receiver
+                self.owner_coin_remove(&receiver, &transaction.coin);
+
+                // Add coin to the sender
+                self.owner_coin_add(&sender, &transaction.coin);
+
                 // Update coin owner
                 *self.coin_owner_map.get_mut(&transaction.coin).unwrap() = 
                     sender.clone();
-
-                // Remove coin from the receiver
-                self.owner_coin_map.get_mut(&receiver).unwrap()
-                    .remove(&transaction.coin);
-
-                // Add coin to the sender
-                self.owner_coin_map.get_mut(&sender).unwrap()
-                    .insert(transaction.coin.clone());
             }
+        }
+    }
+
+    fn owner_coin_add(&mut self, owner: &U256, coin: &U256) {
+        // Get coin order
+        let order = self.coin_info_map[coin].order;
+
+        // Ensure map for owner
+        if !self.owner_coin_map.contains_key(owner) {
+            self.owner_coin_map.insert(owner.clone(), HashMap::new());
+        }
+
+        // Ensure set for order
+        if !self.owner_coin_map[owner].contains_key(&order) {
+            self.owner_coin_map.get_mut(owner).unwrap()
+                .insert(order, HashSet::new());
+        }
+
+        // Insert the coin
+        self.owner_coin_map.get_mut(owner).unwrap()
+            .get_mut(&order).unwrap().insert(coin.clone());
+    }
+
+    fn owner_coin_remove(&mut self, owner: &U256, coin: &U256) {
+        // Get coin order
+        let order = self.coin_info_map[coin].order;
+
+        // Remove the coin
+        self.owner_coin_map.get_mut(owner).unwrap()
+            .get_mut(&order).unwrap().remove(coin);
+
+        // Remove empty set
+        if self.owner_coin_map[owner][&order].is_empty() {
+            self.owner_coin_map.get_mut(owner).unwrap().remove(&order);
+        }
+
+        // Remove empty map
+        if self.owner_coin_map[owner].is_empty() {
+            self.owner_coin_map.remove(owner);
         }
     }
 }
