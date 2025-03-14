@@ -45,20 +45,19 @@ impl Blockchain {
 
     /// Get block by number.
     pub async fn get_block(&self, bix: usize) -> TokioResult<Block> {
-        self.block_col.lock().await.get(bix).await
+        self.block_col.lock().await.get(bix - 1).await
     }
 
     /// Get transaction by number.
     pub async fn get_transaction(&self, tix: usize) -> 
                                  TokioResult<Transaction> {
-        self.transaction_col.lock().await.get(tix).await
+        self.transaction_col.lock().await.get(tix - 1).await
     }
 
     /// Get last block.
     pub async fn get_last_block(&self) -> TokioResult<Block> {
-        let count = self.get_block_count().await?;
-        if count > 0 {
-            let bix = count - 1;
+        let bix = self.get_block_count().await?;
+        if bix > 0 {
             self.get_block(bix).await
         } else {
             Err(ErrorKind::NotFound.into())
@@ -68,29 +67,37 @@ impl Blockchain {
     /// Get transactions of a block by number.
     pub async fn get_transactions_of_block(&self, bix: usize) -> 
                                            TokioResult<Vec<Transaction>> {
-        let block = self.block_col.lock().await.get(bix).await?;
+        let block = self.get_block(bix).await?;
         self.transaction_col.lock().await
-            .get_many(block.ix as usize, block.size as usize).await
+            .get_many(block.tix as usize - 1, block.size as usize).await
     }
 
     /// Push new block with transactions. The function returns the number of 
     /// the inserted block.
     pub async fn push_new_block(&self, transactions: &[Transaction], 
-                                validator: &U256, nonce: &U256, hash: &U256) -> 
+                                hash_prev: &U256, validator: &U256, 
+                                nonce: &U256, hash: &U256) -> 
                                 TokioResult<usize> {
-        let ix = self.transaction_col.lock().await
-            .push_many(transactions).await?;
-        let block = Block::new(ix as u64, transactions.len() as u64,
-                               validator.clone(), nonce.clone(), hash.clone());
-        let bix = self.block_col.lock().await.push(&block).await?;
+        let tix = self.transaction_col.lock().await
+            .push_many(transactions).await? + 1;
+        let block = Block::new(tix as u64, transactions.len() as u64,
+                               hash_prev.clone(), validator.clone(), 
+                               nonce.clone(), hash.clone());
+        let bix = self.block_col.lock().await.push(&block).await? + 1;
         Ok(bix)
     }
 
     /// Truncate the blockchain until the necessary block count.
     pub async fn truncate(&self, block_count: usize) -> TokioResult<()> {
-        let block = self.get_block(block_count).await?;
-        self.block_col.lock().await.resize(block_count).await?;
-        self.transaction_col.lock().await.resize(block.ix as usize).await?;
+        if block_count > 0 {
+            let block = self.get_block(block_count).await?;
+            let transaction_count = (block.tix + block.size) as usize - 1;
+            self.block_col.lock().await.resize(block_count).await?;
+            self.transaction_col.lock().await.resize(transaction_count).await?;
+        } else {
+            self.block_col.lock().await.resize(0).await?;
+            self.transaction_col.lock().await.resize(0).await?;
+        }
         Ok(())
     }
 }

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use rand::Rng;
 use sha3::{Sha3_256, Digest};
 
@@ -10,8 +12,9 @@ use crate::coin::CoinMap;
 /// Basic structure for block.
 #[derive(Clone)]
 pub struct Block {
-    pub ix: u64,
+    pub tix: u64,
     pub size: u64,
+    pub hash_prev: U256,
     pub validator: U256,
     pub nonce: U256,
     pub hash: U256,
@@ -20,13 +23,13 @@ pub struct Block {
 
 impl Block {
     /// New block.
-    pub fn new(ix: u64, size: u64, validator: U256, nonce: U256, 
-               hash: U256) -> Self {
-        Self { ix, size, validator, nonce, hash }
+    pub fn new(tix: u64, size: u64, hash_prev: U256, validator: U256,
+               nonce: U256, hash: U256) -> Self {
+        Self { tix, size, hash_prev, validator, nonce, hash }
     }
 
     /// Build a new block for the transactions. It validates the final hash.
-    pub fn build(ix: u64, block_hash_prev: &U256, validator: U256, 
+    pub fn build(tix: u64, hash_prev: U256, validator: U256, 
                  transactions: &[Transaction], nonce: U256,
                  complexity: usize, schema: &Schema, 
                  coin_map: &CoinMap) -> Option<Self> {
@@ -34,15 +37,15 @@ impl Block {
         if Self::validate_transactions(transactions, &validator, schema, 
                                        coin_map) {
             // Calculate the message
-            let msg = Self::calc_msg(block_hash_prev, &validator, transactions);
+            let msg = Self::calc_msg(&hash_prev, &validator, transactions);
 
             // Calculate the hash
             let hash = Self::calc_hash(&msg, &nonce);
 
             // Validate hash
             if Self::validate_hash(&hash, transactions.len(), complexity) {
-                Some(Self::new(ix, transactions.len() as u64, validator, nonce, 
-                               hash))
+                Some(Self::new(tix, transactions.len() as u64, hash_prev,
+                               validator, nonce, hash))
             } else {
                 None
             }
@@ -55,6 +58,14 @@ impl Block {
     pub fn validate_transactions(transactions: &[Transaction], 
                                  validator: &U256, schema: &Schema, 
                                  coin_map: &CoinMap) -> bool {
+        // Same coins are forbidden among transactions.
+        let coin_set = transactions.iter().map(|tr| tr.coin.clone())
+            .collect::<HashSet<U256>>();
+            
+        if coin_set.len() < transactions.len() {
+            return false;
+        }
+
         // Set a countdown for groupped transactions
         let mut countdown = transactions.len();
 

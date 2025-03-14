@@ -81,6 +81,11 @@ impl Transaction {
         res
     }
 
+    /// Check transaction is fee.
+    pub fn is_fee(&self) -> bool {
+        self.addr == U256::from(0)
+    }
+
     /// Get transaction type.
     pub fn get_type(&self) -> Type {
         if self.addr == U256::from(0) {
