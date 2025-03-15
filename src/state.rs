@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::utils::*;
 use crate::crypto::Schema;
-use crate::coin::Coin;
+use crate::coin::coin_order;
 use crate::block::Block;
 use crate::transaction::{Transaction, Type};
 
@@ -127,13 +127,13 @@ impl State {
                 self.owner_coin_add(&receiver, &transaction.coin);
             } else {
                 // Calculate coin order
-                let coin = Coin::new(transaction.coin.clone(), 
-                                     block.hash_prev.clone(), sender.clone());
+                let order = coin_order(&transaction.coin, &block.hash_prev, 
+                                       &sender);
 
                 // Insert into coin info map
                 self.coin_info_map.insert(
                     transaction.coin.clone(), 
-                    CoinInfo { order: coin.order(), bix, tix }
+                    CoinInfo { order, bix, tix }
                 );
 
                 // Insert into coin owner map

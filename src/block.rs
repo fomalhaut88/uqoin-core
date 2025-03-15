@@ -6,6 +6,7 @@ use sha3::{Sha3_256, Digest};
 use crate::utils::*;
 use crate::transaction::{Type, Transaction, group_transactions};
 use crate::crypto::Schema;
+use crate::coin::coin_is_valid;
 use crate::state::{CoinOwnerMap, CoinInfoMap};
 
 
@@ -33,10 +34,12 @@ impl Block {
                  transactions: &[Transaction], nonce: U256,
                  complexity: usize, schema: &Schema,
                  coin_owner_map: &CoinOwnerMap, 
-                 coin_info_map: &CoinInfoMap) -> Option<Self> {
+                 coin_info_map: &CoinInfoMap,
+                 block_hash_prev: &U256) -> Option<Self> {
         // Validate transactions
         if Self::validate_transactions(transactions, &validator, schema, 
-                                       coin_owner_map, coin_info_map) {
+                                       coin_owner_map, coin_info_map,
+                                       block_hash_prev) {
             // Calculate the message
             let msg = Self::calc_msg(&hash_prev, &validator, transactions);
 
@@ -55,31 +58,52 @@ impl Block {
         }
     }
 
-    /// Validate transactions.
-    pub fn validate_transactions(transactions: &[Transaction], 
-                                 validator: &U256, schema: &Schema, 
-                                 coin_owner_map: &CoinOwnerMap,
-                                 coin_info_map: &CoinInfoMap) -> bool {
-        // Repeated coins are forbidden in transactions.
-        let coin_set = transactions.iter().map(|tr| tr.coin.clone())
-            .collect::<HashSet<U256>>();
-            
-        if coin_set.len() < transactions.len() {
-            return false;
-        }
+    /// Validate coins.
+    pub fn validate_coins(transactions: &[Transaction], schema: &Schema, 
+                          coin_owner_map: &CoinOwnerMap,
+                          block_hash_prev: &U256) -> bool {
+        // Repeated coins are not valid
+        let mut coin_set = HashSet::new();
 
-        // Check coins
+        // Loop for transactions
         for transaction in transactions.iter() {
-            let sender = transaction.get_sender(schema);
-            if let Some(owner) = coin_owner_map.get(&transaction.coin) {
+            // Get coin and sender from transaction
+            let coin = &transaction.coin;
+            let sender = &transaction.get_sender(schema);
+
+            // Check same coin
+            if coin_set.contains(coin) {
+                return false;
+            }
+            coin_set.insert(coin);
+
+            // Try to find the coin in coin-owner map
+            if let Some(owner) = coin_owner_map.get(coin) {
                 // Check ownership
-                if owner != &sender {
+                if owner != sender {
                     return false;
                 }
             } else {
                 // Check mining
-                // ...
+                if !coin_is_valid(coin, block_hash_prev, sender) {
+                    return false;
+                }
             }
+        }
+
+        true
+    }
+
+    /// Validate transactions.
+    pub fn validate_transactions(transactions: &[Transaction], 
+                                 validator: &U256, schema: &Schema, 
+                                 coin_owner_map: &CoinOwnerMap,
+                                 coin_info_map: &CoinInfoMap,
+                                 block_hash_prev: &U256) -> bool {
+        // Check coins
+        if !Self::validate_coins(transactions, schema, coin_owner_map, 
+                                 block_hash_prev) {
+            return false;
         }
 
         // Set a countdown for groupped transactions

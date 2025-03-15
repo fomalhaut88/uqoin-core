@@ -4,7 +4,9 @@ use rand::Rng;
 
 use crate::utils::*;
 use crate::crypto::Schema;
+use crate::coin::coin_is_valid;
 use crate::transaction::{Type, Transaction, Group, Ext};
+use crate::block::Block;
 use crate::state::{CoinOwnerMap, CoinInfoMap, OwnerCoinsMap};
 
 
@@ -32,28 +34,53 @@ impl Pool {
         }
     }
 
-    /// Get ready transactions for next block.
-    pub fn get_ready(&self) -> Vec<Transaction> {
-        vec![]
-    }
-
     /// Add group to waiting transactions.
     pub fn add_group(&mut self, group: &Group, coin_owner_map: &CoinOwnerMap, 
-                     schema: &Schema) -> bool {
-        let sender = group.get_sender(schema);
-        for transaction in group.transactions().iter() {
-            if let Some(owner) = coin_owner_map.get(&transaction.coin) {
-                // Check owner
-                if owner != sender {
-                    return false;
-                }
-            } else {
-                // Check mining
-                // ...
-            }
+                     block_hash_prev: &U256, schema: &Schema) -> bool {
+        if !Block::validate_coins(group.transactions(), schema, coin_owner_map, 
+                                  block_hash_prev) {
+            return false;
         }
         self.groups.push(group.clone());
         true
+    }
+
+    /// Get ready transactions for next block.
+    pub fn get_ready(&self) -> Vec<Transaction> {
+        // Transactions to return
+        let mut transactions = vec![];
+
+        // // Validator resource
+        // let mut validator_resource = owner_coins_map[&self.config.validator]
+        //     .iter().map(|(order, coins)| 
+        //         (*order, Vec::<U256>::from_iter(coins.iter().cloned()))
+        //     ).collect::<HashMap<u64, Vec<U256>>>();
+
+        for group in self.groups.iter() {
+            // Check same coins
+            // ...
+
+            // Add ext transactions
+            // ...
+
+            // Extend transactions if ext was added
+            // ...
+        }
+
+        transactions
+    }
+
+    pub fn roll_up(&mut self) {
+        // Drop groups by intersected coins
+        // ...
+
+        // Remove mined extra coins
+        // ...
+    }
+
+    pub fn roll_down(&mut self) {
+        // Add new groups from rolled transactions
+        // ...
     }
 
     // /// Get transactions for mining the next block.
