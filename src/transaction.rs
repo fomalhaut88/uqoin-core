@@ -2,7 +2,7 @@ use rand::Rng;
 
 use crate::utils::*;
 use crate::crypto::Schema;
-use crate::coin::CoinMap;
+use crate::state::CoinInfoMap;
 
 
 /// Types of transaction or group. In case of group Fee must be incorrect.
@@ -81,11 +81,6 @@ impl Transaction {
         res
     }
 
-    /// Check transaction is fee.
-    pub fn is_fee(&self) -> bool {
-        self.addr == U256::from(0)
-    }
-
     /// Get transaction type.
     pub fn get_type(&self) -> Type {
         if self.addr == U256::from(0) {
@@ -120,13 +115,13 @@ impl Transaction {
     }
 
     /// Get order of the coin.
-    pub fn get_order(&self, coin_map: &CoinMap) -> u64 {
-        coin_map[&self.coin].order()
+    pub fn get_order(&self, coin_info_map: &CoinInfoMap) -> u64 {
+        coin_info_map[&self.coin].order
     }
 
     /// Get value of the coin.
-    pub fn get_value(&self, coin_map: &CoinMap) -> U256 {
-        coin_map[&self.coin].value()
+    pub fn get_value(&self, coin_info_map: &CoinInfoMap) -> U256 {
+        &U256::from(1) << self.get_order(coin_info_map) as usize
     }
 
     /// Check signature with the given public key.
@@ -153,8 +148,8 @@ impl Group {
     /// Create group from transactions. Validation is included, so if the
     /// vector is not valid, `None` will be returned.
     pub fn new(transactions: Vec<Transaction>, schema: &Schema, 
-               coin_map: &CoinMap) -> Option<Self> {
-        if Self::validate_transactions(&transactions, schema, coin_map) {
+               coin_info_map: &CoinInfoMap) -> Option<Self> {
+        if Self::validate_transactions(&transactions, schema, coin_info_map) {
             Some(Self(transactions))
         } else {
             None
@@ -164,7 +159,7 @@ impl Group {
     /// Try to create a group from the leading transactions in the given slice.
     /// Fees are joined by the greedy approach.
     pub fn from_vec(transactions: &mut Vec<Transaction>, schema: &Schema, 
-                    coin_map: &CoinMap) -> Option<Self> {
+                    coin_info_map: &CoinInfoMap) -> Option<Self> {
         if transactions.is_empty() {
             // `None` if the slice is empty
             None
@@ -192,7 +187,7 @@ impl Group {
 
                 // Try to create a group using validation in `Self::new`
                 let trs = vec_split_left(transactions, size);
-                Self::new(trs, schema, coin_map)
+                Self::new(trs, schema, coin_info_map)
             }
         }
     }
@@ -218,34 +213,34 @@ impl Group {
     }
 
     /// Get order of the main coins.
-    pub fn get_order(&self, coin_map: &CoinMap) -> u64 {
+    pub fn get_order(&self, coin_info_map: &CoinInfoMap) -> u64 {
         match self.get_type() {
-            Type::Split => self.0[0].get_order(coin_map),
-            Type::Merge => self.0[0].get_order(coin_map) + 1,
-            Type::Transfer => self.0[0].get_order(coin_map),
+            Type::Split => self.0[0].get_order(coin_info_map),
+            Type::Merge => self.0[0].get_order(coin_info_map) + 1,
+            Type::Transfer => self.0[0].get_order(coin_info_map),
             _ => panic!("Invalid transactions in the group."),
         }
     }
 
     /// Get total value of the group.
-    pub fn get_value(&self, coin_map: &CoinMap) -> U256 {
+    pub fn get_value(&self, coin_info_map: &CoinInfoMap) -> U256 {
         match self.get_type() {
-            Type::Split => self.0[0].get_value(coin_map),
-            Type::Merge => &self.0[0].get_value(coin_map) << 1,
-            Type::Transfer => self.0[0].get_value(coin_map),
+            Type::Split => self.0[0].get_value(coin_info_map),
+            Type::Merge => &self.0[0].get_value(coin_info_map) << 1,
+            Type::Transfer => self.0[0].get_value(coin_info_map),
             _ => panic!("Invalid transactions in the group."),
         }
     }
 
     /// Get total fee of the group.
-    pub fn get_fee(&self, coin_map: &CoinMap) -> U256 {
+    pub fn get_fee(&self, coin_info_map: &CoinInfoMap) -> U256 {
         let fee_ix = match self.get_type() {
             Type::Split => 1,
             Type::Merge => 3,
             Type::Transfer => 1,
             _ => panic!("Invalid transactions in the group."),
         };
-        self.0[fee_ix..].iter().map(|tr| tr.get_value(coin_map))
+        self.0[fee_ix..].iter().map(|tr| tr.get_value(coin_info_map))
             .fold(U256::from(0), |s, v| &s + &v)
     }
 
@@ -261,7 +256,7 @@ impl Group {
 
     /// Validate transactions for the group creation.
     pub fn validate_transactions(transactions: &[Transaction], schema: &Schema, 
-                                 coin_map: &CoinMap) -> bool {
+                                 coin_info_map: &CoinInfoMap) -> bool {
         if transactions.is_empty() {
             // False if no transactions in the slice
             false
@@ -292,9 +287,9 @@ impl Group {
                             (transactions[1].get_type() == Type::Merge) && 
                             (transactions[2].get_type() == Type::Merge);
 
-                        let order0 = transactions[0].get_order(coin_map);
-                        let order1 = transactions[1].get_order(coin_map);
-                        let order2 = transactions[2].get_order(coin_map);
+                        let order0 = transactions[0].get_order(coin_info_map);
+                        let order1 = transactions[1].get_order(coin_info_map);
+                        let order2 = transactions[2].get_order(coin_info_map);
 
                         let order_check = (order1 + 1 == order0) && 
                                           (order2 + 1 == order0);
@@ -323,8 +318,8 @@ pub struct Ext(Vec<Transaction>);
 impl Ext {
     /// Create a new extension from transactions.
     pub fn new(transactions: Vec<Transaction>, schema: &Schema, 
-               coin_map: &CoinMap) -> Option<Self> {
-        if Self::validate_transactions(&transactions, schema, coin_map) {
+               coin_info_map: &CoinInfoMap) -> Option<Self> {
+        if Self::validate_transactions(&transactions, schema, coin_info_map) {
             Some(Self(transactions))
         } else {
             None
@@ -361,28 +356,28 @@ impl Ext {
     }
 
     /// Get order of the main coins in the extension.
-    pub fn get_order(&self, coin_map: &CoinMap) -> u64 {
+    pub fn get_order(&self, coin_info_map: &CoinInfoMap) -> u64 {
         match self.0.len() {
             0 => 0,
-            1 => self.0[0].get_order(coin_map),
-            3 => &self.0[0].get_order(coin_map) + 1,
+            1 => self.0[0].get_order(coin_info_map),
+            3 => &self.0[0].get_order(coin_info_map) + 1,
             _ => panic!("Invalid transactions in the group."),
         }
     }
 
     /// Get total value of the extension.
-    pub fn get_value(&self, coin_map: &CoinMap) -> U256 {
+    pub fn get_value(&self, coin_info_map: &CoinInfoMap) -> U256 {
         match self.0.len() {
             0 => U256::from(0),
-            1 => self.0[0].get_value(coin_map),
-            3 => &self.0[0].get_value(coin_map) << 1,
+            1 => self.0[0].get_value(coin_info_map),
+            3 => &self.0[0].get_value(coin_info_map) << 1,
             _ => panic!("Invalid transactions in the group."),
         }
     }
 
     /// Validate transactions for the extension creation.
     pub fn validate_transactions(transactions: &[Transaction], schema: &Schema, 
-                                 coin_map: &CoinMap) -> bool {
+                                 coin_info_map: &CoinInfoMap) -> bool {
         // Check the size
         match transactions.len() {
             // `true` for the transfer type
@@ -412,9 +407,9 @@ impl Ext {
                     (&transactions[2].addr == addr);
 
                 // Check order
-                let order0 = transactions[0].get_order(coin_map);
-                let order1 = transactions[1].get_order(coin_map);
-                let order2 = transactions[2].get_order(coin_map);
+                let order0 = transactions[0].get_order(coin_info_map);
+                let order1 = transactions[1].get_order(coin_info_map);
+                let order2 = transactions[2].get_order(coin_info_map);
 
                 let order_check = (order1 + 1 == order0) && 
                                   (order2 + 1 == order0);
@@ -433,15 +428,15 @@ impl Ext {
 /// `transactions` the iterator stops until the first error, so for the
 /// validation purpose check the total size of yielded groups and extensions.
 pub fn group_transactions(mut transactions: Vec<Transaction>, schema: &Schema, 
-                          coin_map: &CoinMap) -> 
+                          coin_info_map: &CoinInfoMap) -> 
                           impl Iterator<Item = (Group, Ext)> {
     std::iter::from_fn(move || {
         if let Some(group) = Group::from_vec(&mut transactions, schema, 
-                                             coin_map) {
+                                             coin_info_map) {
             let ext_size = group.ext_size();
             let ext_trs = vec_split_left(&mut transactions, ext_size);
 
-            if let Some(ext) = Ext::new(ext_trs, schema, coin_map) {
+            if let Some(ext) = Ext::new(ext_trs, schema, coin_info_map) {
                 Some((group, ext))
             } else {
                 None

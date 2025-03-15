@@ -4,7 +4,7 @@ use crate::utils::*;
 use crate::crypto::Schema;
 use crate::coin::Coin;
 use crate::block::Block;
-use crate::transaction::Transaction;
+use crate::transaction::{Transaction, Type};
 
 
 /// Hash of the zero block.
@@ -37,13 +37,23 @@ pub struct LastBlockInfo {
 }
 
 
+/// Map coin-owner
+pub type CoinOwnerMap = HashMap<U256, U256>;
+
+/// Map coin-info
+pub type CoinInfoMap = HashMap<U256, CoinInfo>;
+
+/// Map owner-coins
+pub type OwnerCoinsMap = HashMap<U256, HashMap<u64, HashSet<U256>>>;
+
+
 /// Uqoin state for fast access to the last block, coin and ownership
 /// information.
 #[derive(Clone)]
 pub struct State {
-    coin_owner_map: HashMap<U256, U256>,
-    coin_info_map: HashMap<U256, CoinInfo>,
-    owner_coin_map: HashMap<U256, HashMap<u64, HashSet<U256>>>,
+    coin_owner_map: CoinOwnerMap,
+    coin_info_map: CoinInfoMap,
+    owner_coins_map: OwnerCoinsMap,
     last_block_info: LastBlockInfo,
 }
 
@@ -52,9 +62,9 @@ impl State {
     /// Create initial state.
     pub fn new() -> Self {
         Self {
-            coin_owner_map: HashMap::new(),
-            coin_info_map: HashMap::new(),
-            owner_coin_map: HashMap::new(),
+            coin_owner_map: CoinOwnerMap::new(),
+            coin_info_map: CoinInfoMap::new(),
+            owner_coins_map: OwnerCoinsMap::new(),
             last_block_info: LastBlockInfo {
                 bix: 0, 
                 hash: U256::from_hex(GENESIS_HASH),
@@ -74,7 +84,7 @@ impl State {
 
     /// Get coins of the owner.
     pub fn get_coins(&self, owner: &U256) -> &HashMap<u64, HashSet<U256>> {
-        &self.owner_coin_map[owner]
+        &self.owner_coins_map[owner]
     }
 
     /// Get last block info.
@@ -98,10 +108,10 @@ impl State {
             let sender = transaction.get_sender(schema);
 
             // Get receiver
-            let receiver = if transaction.is_fee() {
-                &block.validator
-            } else {
+            let receiver = if transaction.get_type() == Type::Transfer {
                 &transaction.addr
+            } else {
+                &block.validator
             };
             
             // Check the coin already exists
@@ -160,10 +170,10 @@ impl State {
             let sender = transaction.get_sender(schema);
 
             // Get receiver
-            let receiver = if transaction.is_fee() {
-                &block.validator
-            } else {
+            let receiver = if transaction.get_type() == Type::Transfer {
                 &transaction.addr
+            } else {
+                &block.validator
             };
 
             // Check the coin was mined in this block
@@ -195,18 +205,18 @@ impl State {
         let order = self.coin_info_map[coin].order;
 
         // Ensure map for owner
-        if !self.owner_coin_map.contains_key(owner) {
-            self.owner_coin_map.insert(owner.clone(), HashMap::new());
+        if !self.owner_coins_map.contains_key(owner) {
+            self.owner_coins_map.insert(owner.clone(), HashMap::new());
         }
 
         // Ensure set for order
-        if !self.owner_coin_map[owner].contains_key(&order) {
-            self.owner_coin_map.get_mut(owner).unwrap()
+        if !self.owner_coins_map[owner].contains_key(&order) {
+            self.owner_coins_map.get_mut(owner).unwrap()
                 .insert(order, HashSet::new());
         }
 
         // Insert the coin
-        self.owner_coin_map.get_mut(owner).unwrap()
+        self.owner_coins_map.get_mut(owner).unwrap()
             .get_mut(&order).unwrap().insert(coin.clone());
     }
 
@@ -215,17 +225,17 @@ impl State {
         let order = self.coin_info_map[coin].order;
 
         // Remove the coin
-        self.owner_coin_map.get_mut(owner).unwrap()
+        self.owner_coins_map.get_mut(owner).unwrap()
             .get_mut(&order).unwrap().remove(coin);
 
         // Remove empty set
-        if self.owner_coin_map[owner][&order].is_empty() {
-            self.owner_coin_map.get_mut(owner).unwrap().remove(&order);
+        if self.owner_coins_map[owner][&order].is_empty() {
+            self.owner_coins_map.get_mut(owner).unwrap().remove(&order);
         }
 
         // Remove empty map
-        if self.owner_coin_map[owner].is_empty() {
-            self.owner_coin_map.remove(owner);
+        if self.owner_coins_map[owner].is_empty() {
+            self.owner_coins_map.remove(owner);
         }
     }
 }

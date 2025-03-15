@@ -6,7 +6,7 @@ use sha3::{Sha3_256, Digest};
 use crate::utils::*;
 use crate::transaction::{Type, Transaction, group_transactions};
 use crate::crypto::Schema;
-use crate::coin::CoinMap;
+use crate::state::{CoinOwnerMap, CoinInfoMap};
 
 
 /// Basic structure for block.
@@ -31,11 +31,12 @@ impl Block {
     /// Build a new block for the transactions. It validates the final hash.
     pub fn build(tix: u64, hash_prev: U256, validator: U256, 
                  transactions: &[Transaction], nonce: U256,
-                 complexity: usize, schema: &Schema, 
-                 coin_map: &CoinMap) -> Option<Self> {
+                 complexity: usize, schema: &Schema,
+                 coin_owner_map: &CoinOwnerMap, 
+                 coin_info_map: &CoinInfoMap) -> Option<Self> {
         // Validate transactions
         if Self::validate_transactions(transactions, &validator, schema, 
-                                       coin_map) {
+                                       coin_owner_map, coin_info_map) {
             // Calculate the message
             let msg = Self::calc_msg(&hash_prev, &validator, transactions);
 
@@ -57,8 +58,9 @@ impl Block {
     /// Validate transactions.
     pub fn validate_transactions(transactions: &[Transaction], 
                                  validator: &U256, schema: &Schema, 
-                                 coin_map: &CoinMap) -> bool {
-        // Same coins are forbidden among transactions.
+                                 coin_owner_map: &CoinOwnerMap,
+                                 coin_info_map: &CoinInfoMap) -> bool {
+        // Repeated coins are forbidden in transactions.
         let coin_set = transactions.iter().map(|tr| tr.coin.clone())
             .collect::<HashSet<U256>>();
             
@@ -66,12 +68,22 @@ impl Block {
             return false;
         }
 
+        // Check ownership
+        for transaction in transactions.iter() {
+            let sender = transaction.get_sender(schema);
+            if let Some(owner) = coin_owner_map.get(&transaction.coin) {
+                if owner != &sender {
+                    return false;
+                }
+            }
+        }
+
         // Set a countdown for groupped transactions
         let mut countdown = transactions.len();
 
         // Loop for groups and extensions
         for (group, ext) in group_transactions(transactions.to_vec(), schema, 
-                                               coin_map) {
+                                               coin_info_map) {
             // Check validator
             if let Some(ext_sender) = ext.get_sender(schema) {
                 if &ext_sender != validator {
@@ -81,7 +93,8 @@ impl Block {
 
             // Check value
             if ext.get_type() != Type::Transfer {
-                if group.get_order(coin_map) != ext.get_order(coin_map) {
+                if group.get_order(coin_info_map) != 
+                   ext.get_order(coin_info_map) {
                     return false;
                 }
             }

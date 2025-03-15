@@ -1,14 +1,8 @@
 //! Coin structure.
 
-use std::collections::HashMap;
-
 use rand::Rng;
 
 use crate::utils::*;
-
-
-/// Map of coins number-coin
-pub type CoinMap = HashMap<U256, Coin>;
 
 
 /// Coin structure that keeps the numberm hash, block_hash and order.
