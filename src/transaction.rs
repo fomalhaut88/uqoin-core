@@ -40,46 +40,46 @@ impl Transaction {
         Self::new(coin, addr, sign_r, sign_s)
     }
 
-    /// Prepare transactions for transfer.
-    pub fn prepare_transfer<R: Rng>(rng: &mut R, key: &U256, coin: &U256, 
-                                    addr: &U256, fee_coins: &[U256],
-                                    schema: &Schema) -> Vec<Self> {
-        let mut res = vec![
-            Self::build(rng, coin.clone(), addr.clone(), key, schema)
-        ];
-        res.extend(fee_coins.iter().map(|fee_coin| 
-            Self::build(rng, fee_coin.clone(), U256::from(0), key, schema)
-        ));
-        res
-    }
+    // /// Prepare transactions for transfer.
+    // pub fn prepare_transfer<R: Rng>(rng: &mut R, key: &U256, coin: &U256, 
+    //                                 addr: &U256, fee_coins: &[U256],
+    //                                 schema: &Schema) -> Vec<Self> {
+    //     let mut res = vec![
+    //         Self::build(rng, coin.clone(), addr.clone(), key, schema)
+    //     ];
+    //     res.extend(fee_coins.iter().map(|fee_coin| 
+    //         Self::build(rng, fee_coin.clone(), U256::from(0), key, schema)
+    //     ));
+    //     res
+    // }
 
-    /// Prepare transactions for split.
-    pub fn prepare_split<R: Rng>(rng: &mut R, key: &U256, coin: &U256, 
-                                 fee_coins: &[U256],
-                                 schema: &Schema) -> Vec<Self> {
-        let mut res = vec![
-            Self::build(rng, coin.clone(), U256::from(1), key, schema)
-        ];
-        res.extend(fee_coins.iter().map(|fee_coin| 
-            Self::build(rng, fee_coin.clone(), U256::from(0), key, schema)
-        ));
-        res
-    }
+    // /// Prepare transactions for split.
+    // pub fn prepare_split<R: Rng>(rng: &mut R, key: &U256, coin: &U256, 
+    //                              fee_coins: &[U256],
+    //                              schema: &Schema) -> Vec<Self> {
+    //     let mut res = vec![
+    //         Self::build(rng, coin.clone(), U256::from(1), key, schema)
+    //     ];
+    //     res.extend(fee_coins.iter().map(|fee_coin| 
+    //         Self::build(rng, fee_coin.clone(), U256::from(0), key, schema)
+    //     ));
+    //     res
+    // }
 
-    /// Prepare transactions for merge.
-    pub fn prepare_merge<R: Rng>(rng: &mut R, key: &U256, coins: [&U256; 3], 
-                                 fee_coins: &[U256],
-                                 schema: &Schema) -> Vec<Self> {
-        let mut res = vec![
-            Self::build(rng, coins[0].clone(), U256::from(2), key, schema),
-            Self::build(rng, coins[1].clone(), U256::from(2), key, schema),
-            Self::build(rng, coins[2].clone(), U256::from(2), key, schema),
-        ];
-        res.extend(fee_coins.iter().map(|fee_coin| 
-            Self::build(rng, fee_coin.clone(), U256::from(0), key, schema)
-        ));
-        res
-    }
+    // /// Prepare transactions for merge.
+    // pub fn prepare_merge<R: Rng>(rng: &mut R, key: &U256, coins: [&U256; 3], 
+    //                              fee_coins: &[U256],
+    //                              schema: &Schema) -> Vec<Self> {
+    //     let mut res = vec![
+    //         Self::build(rng, coins[0].clone(), U256::from(2), key, schema),
+    //         Self::build(rng, coins[1].clone(), U256::from(2), key, schema),
+    //         Self::build(rng, coins[2].clone(), U256::from(2), key, schema),
+    //     ];
+    //     res.extend(fee_coins.iter().map(|fee_coin| 
+    //         Self::build(rng, fee_coin.clone(), U256::from(0), key, schema)
+    //     ));
+    //     res
+    // }
 
     /// Get transaction type.
     pub fn get_type(&self) -> Type {
@@ -119,11 +119,6 @@ impl Transaction {
         coin_info_map[&self.coin].order
     }
 
-    /// Get value of the coin.
-    pub fn get_value(&self, coin_info_map: &CoinInfoMap) -> U256 {
-        &U256::from(1) << self.get_order(coin_info_map) as usize
-    }
-
     /// Check signature with the given public key.
     pub fn check(&self, public: &U256, 
                  schema: &Schema) -> bool {
@@ -141,6 +136,7 @@ impl Transaction {
 
 
 /// Group of transactions.
+#[derive(Clone)]
 pub struct Group(Vec<Transaction>);
 
 
@@ -164,24 +160,21 @@ impl Group {
             // `None` if the slice is empty
             None
         } else {
-            // Index where fee transactions start
-            let fee_ix = match transactions[0].get_type() {
+            // Size of the group without fee
+            let mut size = match transactions[0].get_type() {
                 Type::Split => 1,
                 Type::Merge => 3,
                 Type::Transfer => 1,
                 _ => 0,
             };
 
-            if fee_ix == 0 {
+            if size == 0 {
                 // `None` if we start from a fee transaction
                 None
             } else {
-                // We set `size` to `fee_ix` and increment it until the slice 
-                // ends or a non-fee transaction happens.
-                let mut size = fee_ix;
-
-                while (size < transactions.len()) && 
-                      (transactions[size].get_type() == Type::Fee) {
+                // Increment size if the next transaction is fee
+                if (size < transactions.len()) && 
+                   (transactions[size].get_type() == Type::Fee) {
                     size += 1;
                 }
 
@@ -207,6 +200,17 @@ impl Group {
         self.0[0].get_sender(schema)
     }
 
+    /// Get fee transaction.
+    pub fn get_fee(&self) -> Option<&Transaction> {
+        let fee_ix = match self.0[0].get_type() {
+            Type::Split => 1,
+            Type::Merge => 3,
+            Type::Transfer => 1,
+            _ => panic!("Invalid group."),
+        };
+        self.0.get(fee_ix)
+    }
+
     /// Get total number of transactions.
     pub fn len(&self) -> usize {
         self.0.len()
@@ -220,28 +224,6 @@ impl Group {
             Type::Transfer => self.0[0].get_order(coin_info_map),
             _ => panic!("Invalid transactions in the group."),
         }
-    }
-
-    /// Get total value of the group.
-    pub fn get_value(&self, coin_info_map: &CoinInfoMap) -> U256 {
-        match self.get_type() {
-            Type::Split => self.0[0].get_value(coin_info_map),
-            Type::Merge => &self.0[0].get_value(coin_info_map) << 1,
-            Type::Transfer => self.0[0].get_value(coin_info_map),
-            _ => panic!("Invalid transactions in the group."),
-        }
-    }
-
-    /// Get total fee of the group.
-    pub fn get_fee(&self, coin_info_map: &CoinInfoMap) -> U256 {
-        let fee_ix = match self.get_type() {
-            Type::Split => 1,
-            Type::Merge => 3,
-            Type::Transfer => 1,
-            _ => panic!("Invalid transactions in the group."),
-        };
-        self.0[fee_ix..].iter().map(|tr| tr.get_value(coin_info_map))
-            .fold(U256::from(0), |s, v| &s + &v)
     }
 
     /// Get number or required response transactions from the validator.
@@ -275,13 +257,17 @@ impl Group {
                     Type::Fee => false,
 
                     // Check the rest fees if split
-                    Type::Split => transactions[1..].iter()
-                        .all(|tr| tr.get_type() == Type::Fee),
+                    Type::Split => (transactions.len() == 1) || (
+                        (transactions.len() == 2) && 
+                        (transactions[1].get_type() == Type::Fee)
+                    ),
 
                     // Check fees, other types and values for the rest if merge
                     Type::Merge => {
-                        let fee_check = transactions[3..].iter()
-                            .all(|tr| tr.get_type() == Type::Fee);
+                        let fee_check = (transactions.len() == 3) || (
+                            (transactions.len() == 4) && 
+                            (transactions[3].get_type() == Type::Fee)
+                        );
 
                         let type_check = 
                             (transactions[1].get_type() == Type::Merge) && 
@@ -298,8 +284,10 @@ impl Group {
                     },
 
                     // Check the rest fees if transfer
-                    Type::Transfer => transactions[1..].iter()
-                        .all(|tr| tr.get_type() == Type::Fee),
+                    Type::Transfer => (transactions.len() == 1) || (
+                        (transactions.len() == 2) && 
+                        (transactions[1].get_type() == Type::Fee)
+                    ),
                 }
             } else {
                 // False if senders differ
@@ -312,6 +300,7 @@ impl Group {
 
 /// Extension for the group of transactions. It must be filled by the validator
 /// in split or merge types.
+#[derive(Clone)]
 pub struct Ext(Vec<Transaction>);
 
 
@@ -361,16 +350,6 @@ impl Ext {
             0 => 0,
             1 => self.0[0].get_order(coin_info_map),
             3 => &self.0[0].get_order(coin_info_map) + 1,
-            _ => panic!("Invalid transactions in the group."),
-        }
-    }
-
-    /// Get total value of the extension.
-    pub fn get_value(&self, coin_info_map: &CoinInfoMap) -> U256 {
-        match self.0.len() {
-            0 => U256::from(0),
-            1 => self.0[0].get_value(coin_info_map),
-            3 => &self.0[0].get_value(coin_info_map) << 1,
             _ => panic!("Invalid transactions in the group."),
         }
     }

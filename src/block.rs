@@ -68,13 +68,17 @@ impl Block {
             return false;
         }
 
-        // Check ownership
+        // Check coins
         for transaction in transactions.iter() {
             let sender = transaction.get_sender(schema);
             if let Some(owner) = coin_owner_map.get(&transaction.coin) {
+                // Check ownership
                 if owner != &sender {
                     return false;
                 }
+            } else {
+                // Check mining
+                // ...
             }
         }
 
