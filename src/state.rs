@@ -43,8 +43,11 @@ pub type CoinOwnerMap = HashMap<U256, U256>;
 /// Map coin-info
 pub type CoinInfoMap = HashMap<U256, CoinInfo>;
 
+/// Map order-coins
+pub type OrderCoinsMap = HashMap<u64, HashSet<U256>>;
+
 /// Map owner-coins
-pub type OwnerCoinsMap = HashMap<U256, HashMap<u64, HashSet<U256>>>;
+pub type OwnerCoinsMap = HashMap<U256, OrderCoinsMap>;
 
 
 /// Uqoin state for fast access to the last block, coin and ownership
@@ -73,18 +76,18 @@ impl State {
     }
 
     /// Get owner of the coin by number.
-    pub fn get_owner(&self, coin: &U256) -> &U256 {
-        &self.coin_owner_map[coin]
+    pub fn get_owner(&self, coin: &U256) -> Option<&U256> {
+        self.coin_owner_map.get(coin)
     }
 
     /// Get coin info by number.
-    pub fn get_coin_info(&self, coin: &U256) -> &CoinInfo {
-        &self.coin_info_map[coin]
+    pub fn get_coin_info(&self, coin: &U256) -> Option<&CoinInfo> {
+        self.coin_info_map.get(coin)
     }
 
     /// Get coins of the owner.
-    pub fn get_coins(&self, owner: &U256) -> &HashMap<u64, HashSet<U256>> {
-        &self.owner_coins_map[owner]
+    pub fn get_coins(&self, owner: &U256) -> Option<&OrderCoinsMap> {
+        self.owner_coins_map.get(owner)
     }
 
     /// Get last block info.

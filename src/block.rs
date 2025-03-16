@@ -4,7 +4,7 @@ use sha3::{Sha3_256, Digest};
 use crate::utils::*;
 use crate::transaction::{Type, Transaction, group_transactions};
 use crate::crypto::Schema;
-use crate::state::{CoinOwnerMap, CoinInfoMap};
+use crate::state::State;
 
 
 /// Basic structure for block.
@@ -21,7 +21,7 @@ pub struct Block {
 
 impl Block {
     /// New block.
-    pub fn new(tix: u64, size: u64, hash_prev: U256, validator: U256,
+    pub fn new(tix: u64, size: u64, hash_prev: U256, validator: U256, 
                nonce: U256, hash: U256) -> Self {
         Self { tix, size, hash_prev, validator, nonce, hash }
     }
@@ -30,13 +30,10 @@ impl Block {
     pub fn build(tix: u64, hash_prev: U256, validator: U256, 
                  transactions: &[Transaction], nonce: U256,
                  complexity: usize, schema: &Schema,
-                 coin_owner_map: &CoinOwnerMap, 
-                 coin_info_map: &CoinInfoMap,
-                 block_hash_prev: &U256) -> Option<Self> {
+                 state: &State) -> Option<Self> {
         // Validate transactions
         if Self::validate_transactions(transactions, &validator, schema, 
-                                       coin_owner_map, coin_info_map,
-                                       block_hash_prev) {
+                                       state) {
             // Calculate the message
             let msg = Self::calc_msg(&hash_prev, &validator, transactions);
 
@@ -59,8 +56,7 @@ impl Block {
     /// 1. All coins are unique.
     /// 2. All transactions are valid (see `Transaction::validate_coins()`).
     pub fn validate_coins(transactions: &[Transaction], schema: &Schema, 
-                          coin_owner_map: &CoinOwnerMap,
-                          block_hash_prev: &U256) -> bool {
+                          state: &State) -> bool {
         // Repeated coins are not valid
         if !check_unique(transactions.iter().map(|tr| &tr.coin)) {
             return false;
@@ -68,8 +64,7 @@ impl Block {
 
         // Validate coin in each transaction
         for transaction in transactions.iter() {
-            if !transaction.validate_coin(schema, block_hash_prev, 
-                                          coin_owner_map) {
+            if !transaction.validate_coin(schema, state) {
                 return false;
             }
         }
@@ -86,12 +81,9 @@ impl Block {
     /// they cannot be created invalid due to inner validation.
     pub fn validate_transactions(transactions: &[Transaction], 
                                  validator: &U256, schema: &Schema, 
-                                 coin_owner_map: &CoinOwnerMap,
-                                 coin_info_map: &CoinInfoMap,
-                                 block_hash_prev: &U256) -> bool {
+                                 state: &State) -> bool {
         // Check coins
-        if !Self::validate_coins(transactions, schema, coin_owner_map, 
-                                 block_hash_prev) {
+        if !Self::validate_coins(transactions, schema, state) {
             return false;
         }
 
@@ -100,7 +92,7 @@ impl Block {
 
         // Loop for groups and extensions
         for (group, ext) in group_transactions(transactions.to_vec(), schema, 
-                                               coin_info_map) {
+                                               state) {
             // Check validator
             if let Some(ext_sender) = ext.get_sender(schema) {
                 if &ext_sender != validator {
@@ -110,8 +102,8 @@ impl Block {
 
             // Check value
             if ext.get_type() != Type::Transfer {
-                if group.get_order(coin_info_map) != 
-                   ext.get_order(coin_info_map) {
+                if group.get_order(state) != 
+                   ext.get_order(state) {
                     return false;
                 }
             }
