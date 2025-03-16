@@ -1,12 +1,9 @@
-use std::collections::HashSet;
-
 use rand::Rng;
 use sha3::{Sha3_256, Digest};
 
 use crate::utils::*;
 use crate::transaction::{Type, Transaction, group_transactions};
 use crate::crypto::Schema;
-use crate::coin::coin_is_valid;
 use crate::state::{CoinOwnerMap, CoinInfoMap};
 
 
@@ -58,43 +55,35 @@ impl Block {
         }
     }
 
-    /// Validate coins.
+    /// Validate coins. The checks:
+    /// 1. All coins are unique.
+    /// 2. All transactions are valid (see `Transaction::validate_coins()`).
     pub fn validate_coins(transactions: &[Transaction], schema: &Schema, 
                           coin_owner_map: &CoinOwnerMap,
                           block_hash_prev: &U256) -> bool {
         // Repeated coins are not valid
-        let mut coin_set = HashSet::new();
+        if !check_unique(transactions.iter().map(|tr| &tr.coin)) {
+            return false;
+        }
 
-        // Loop for transactions
+        // Validate coin in each transaction
         for transaction in transactions.iter() {
-            // Get coin and sender from transaction
-            let coin = &transaction.coin;
-            let sender = &transaction.get_sender(schema);
-
-            // Check same coin
-            if coin_set.contains(coin) {
+            if !transaction.validate_coin(schema, block_hash_prev, 
+                                          coin_owner_map) {
                 return false;
-            }
-            coin_set.insert(coin);
-
-            // Try to find the coin in coin-owner map
-            if let Some(owner) = coin_owner_map.get(coin) {
-                // Check ownership
-                if owner != sender {
-                    return false;
-                }
-            } else {
-                // Check mining
-                if !coin_is_valid(coin, block_hash_prev, sender) {
-                    return false;
-                }
             }
         }
 
         true
     }
 
-    /// Validate transactions.
+    /// Validate transactions. The checks:
+    /// 1. All coins are valid (see `validate_coins`).
+    /// 2. All transactions can be groupped into groups and extensions.
+    /// 3. Sender of each extension is the validator.
+    /// 4. Values of groups and extensions correspond each other.
+    /// Each group or extension has valid structure after the groupping because
+    /// they cannot be created invalid due to inner validation.
     pub fn validate_transactions(transactions: &[Transaction], 
                                  validator: &U256, schema: &Schema, 
                                  coin_owner_map: &CoinOwnerMap,

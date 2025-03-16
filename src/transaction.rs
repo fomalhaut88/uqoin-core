@@ -2,7 +2,8 @@ use rand::Rng;
 
 use crate::utils::*;
 use crate::crypto::Schema;
-use crate::state::CoinInfoMap;
+use crate::coin::coin_is_valid;
+use crate::state::{CoinInfoMap, CoinOwnerMap};
 
 
 /// Types of transaction or group. In case of group Fee must be incorrect.
@@ -39,47 +40,6 @@ impl Transaction {
         let (sign_r, sign_s) = schema.build_signature(rng, &hash, key);
         Self::new(coin, addr, sign_r, sign_s)
     }
-
-    // /// Prepare transactions for transfer.
-    // pub fn prepare_transfer<R: Rng>(rng: &mut R, key: &U256, coin: &U256, 
-    //                                 addr: &U256, fee_coins: &[U256],
-    //                                 schema: &Schema) -> Vec<Self> {
-    //     let mut res = vec![
-    //         Self::build(rng, coin.clone(), addr.clone(), key, schema)
-    //     ];
-    //     res.extend(fee_coins.iter().map(|fee_coin| 
-    //         Self::build(rng, fee_coin.clone(), U256::from(0), key, schema)
-    //     ));
-    //     res
-    // }
-
-    // /// Prepare transactions for split.
-    // pub fn prepare_split<R: Rng>(rng: &mut R, key: &U256, coin: &U256, 
-    //                              fee_coins: &[U256],
-    //                              schema: &Schema) -> Vec<Self> {
-    //     let mut res = vec![
-    //         Self::build(rng, coin.clone(), U256::from(1), key, schema)
-    //     ];
-    //     res.extend(fee_coins.iter().map(|fee_coin| 
-    //         Self::build(rng, fee_coin.clone(), U256::from(0), key, schema)
-    //     ));
-    //     res
-    // }
-
-    // /// Prepare transactions for merge.
-    // pub fn prepare_merge<R: Rng>(rng: &mut R, key: &U256, coins: [&U256; 3], 
-    //                              fee_coins: &[U256],
-    //                              schema: &Schema) -> Vec<Self> {
-    //     let mut res = vec![
-    //         Self::build(rng, coins[0].clone(), U256::from(2), key, schema),
-    //         Self::build(rng, coins[1].clone(), U256::from(2), key, schema),
-    //         Self::build(rng, coins[2].clone(), U256::from(2), key, schema),
-    //     ];
-    //     res.extend(fee_coins.iter().map(|fee_coin| 
-    //         Self::build(rng, fee_coin.clone(), U256::from(0), key, schema)
-    //     ));
-    //     res
-    // }
 
     /// Get transaction type.
     pub fn get_type(&self) -> Type {
@@ -119,13 +79,29 @@ impl Transaction {
         coin_info_map[&self.coin].order
     }
 
-    /// Check signature with the given public key.
-    pub fn check(&self, public: &U256, 
-                 schema: &Schema) -> bool {
-        schema.check_signature(
-            &self.get_msg(), public, 
-            &(self.sign_r.clone(), self.sign_s.clone())
-        )
+    /// Validate coin in the transaction. The checks:
+    /// 1. Sender is the owner of each coin, if it met before.
+    /// 2. The coin number corresponds the previous block hash and the sender
+    /// if the coin is new (just mined).
+    pub fn validate_coin(&self, schema: &Schema, block_hash_prev: &U256, 
+                         coin_owner_map: &CoinOwnerMap) -> bool {
+        // Get sender
+        let sender = &self.get_sender(schema);
+
+        // Try to find the coin in coin-owner map
+        if let Some(owner) = coin_owner_map.get(&self.coin) {
+            // Check ownership
+            if owner != sender {
+                return false;
+            }
+        } else {
+            // Check mining
+            if !coin_is_valid(&self.coin, block_hash_prev, sender) {
+                return false;
+            }
+        }
+
+        true
     }
 
     /// Calculate transaction message as hash of the `coin` and `addr`.
@@ -135,7 +111,10 @@ impl Transaction {
 }
 
 
-/// Group of transactions.
+/// Group of transactions. Due to the check on create, group cannot be invalid.
+/// The valid group must have: 1) unique coins, 2) the same sender, 
+/// 3) consistent transaction order, types, values and count. Empty group is
+/// not allowed. Coins are supposed to be correct, group does not check them.
 #[derive(Clone)]
 pub struct Group(Vec<Transaction>);
 
@@ -239,67 +218,69 @@ impl Group {
     /// Validate transactions for the group creation.
     pub fn validate_transactions(transactions: &[Transaction], schema: &Schema, 
                                  coin_info_map: &CoinInfoMap) -> bool {
+        // False if no transactions in the slice
         if transactions.is_empty() {
-            // False if no transactions in the slice
-            false
-        } else {
-            // Get the first sender
-            let sender = transactions[0].get_sender(schema);
+            return false;
+        }
 
-            // Check same sender
-            let is_same_sender = transactions.iter()
-                .all(|tr| tr.get_sender(schema) == sender);
-            
-            if is_same_sender {
-                // Check the first type
-                match transactions[0].get_type() {
-                    // False if the first transaction is fee
-                    Type::Fee => false,
+        // Check unique coins
+        if !check_unique(transactions.iter().map(|tr| &tr.coin)) {
+            return false;
+        }
 
-                    // Check the rest fees if split
-                    Type::Split => (transactions.len() == 1) || (
-                        (transactions.len() == 2) && 
-                        (transactions[1].get_type() == Type::Fee)
-                    ),
+        // Check same sender
+        if !check_same(transactions.iter().map(|tr| tr.get_sender(schema))) {
+            return false;
+        }
 
-                    // Check fees, other types and values for the rest if merge
-                    Type::Merge => {
-                        let fee_check = (transactions.len() == 3) || (
-                            (transactions.len() == 4) && 
-                            (transactions[3].get_type() == Type::Fee)
-                        );
+        // Check the first type
+        match transactions[0].get_type() {
+            // False if the first transaction is fee
+            Type::Fee => false,
 
-                        let type_check = 
-                            (transactions[1].get_type() == Type::Merge) && 
-                            (transactions[2].get_type() == Type::Merge);
+            // Check the rest fees if split
+            Type::Split => (transactions.len() == 1) || (
+                (transactions.len() == 2) && 
+                (transactions[1].get_type() == Type::Fee)
+            ),
 
-                        let order0 = transactions[0].get_order(coin_info_map);
-                        let order1 = transactions[1].get_order(coin_info_map);
-                        let order2 = transactions[2].get_order(coin_info_map);
+            // Check fees, other types and values for the rest if merge
+            Type::Merge => {
+                let fee_check = (transactions.len() == 3) || (
+                    (transactions.len() == 4) && 
+                    (transactions[3].get_type() == Type::Fee)
+                );
 
-                        let order_check = (order1 + 1 == order0) && 
-                                          (order2 + 1 == order0);
+                let type_check = 
+                    (transactions[1].get_type() == Type::Merge) && 
+                    (transactions[2].get_type() == Type::Merge);
 
-                        fee_check && type_check && order_check
-                    },
+                let order0 = transactions[0].get_order(coin_info_map);
+                let order1 = transactions[1].get_order(coin_info_map);
+                let order2 = transactions[2].get_order(coin_info_map);
 
-                    // Check the rest fees if transfer
-                    Type::Transfer => (transactions.len() == 1) || (
-                        (transactions.len() == 2) && 
-                        (transactions[1].get_type() == Type::Fee)
-                    ),
-                }
-            } else {
-                // False if senders differ
-                false
-            }
+                let order_check = (order1 + 1 == order0) && 
+                                  (order2 + 1 == order0);
+
+                fee_check && type_check && order_check
+            },
+
+            // Check the rest fees if transfer
+            Type::Transfer => (transactions.len() == 1) || (
+                (transactions.len() == 2) && 
+                (transactions[1].get_type() == Type::Fee)
+            ),
         }
     }
 }
 
 
 /// Extension for the group of transactions. It must be filled by the validator
-/// in split or merge types.
+/// in `Split` or `Merge` types. Due to the check on create, extenstion cannot  
+/// be invalid.  The valid extension must have: 1) unique coins, 2) the same  
+/// sender (validator), 3) consistent transaction order, types, values and 
+/// count depending on the group type. Extension can be empty for `Transfer` 
+/// type. Coins are supposed to be correct, group does not check them.
 #[derive(Clone)]
 pub struct Ext(Vec<Transaction>);
 
@@ -357,6 +338,16 @@ impl Ext {
     /// Validate transactions for the extension creation.
     pub fn validate_transactions(transactions: &[Transaction], schema: &Schema, 
                                  coin_info_map: &CoinInfoMap) -> bool {
+        // Check unique coins
+        if !check_unique(transactions.iter().map(|tr| &tr.coin)) {
+            return false;
+        }
+
+        // Check same sender
+        if !check_same(transactions.iter().map(|tr| tr.get_sender(schema))) {
+            return false;
+        }
+
         // Check the size
         match transactions.len() {
             // `true` for the transfer type

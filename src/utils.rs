@@ -1,4 +1,6 @@
 use std::mem;
+use std::hash::Hash;
+use std::collections::HashSet;
 
 use sha3::{Sha3_256, Digest};
 use finitelib::prelude::*;
@@ -39,4 +41,31 @@ pub fn vec_split_left<T>(v: &mut Vec<T>, ix: usize) -> Vec<T> {
     let mut u = v.split_off(ix);
     mem::swap(v, &mut u);
     u
+}
+
+
+/// Check unique values.
+pub fn check_unique<T: Eq + Hash, I: Iterator<Item = T>>(it: I) -> bool {
+    let mut set = HashSet::<T>::new();
+    for elem in it {
+        if set.contains(&elem) {
+            return false;
+        }
+        set.insert(elem);
+    }
+    true
+}
+
+
+/// Check if all values are the same.
+pub fn check_same<T: PartialEq, I: Iterator<Item = T>>(it: I) -> bool {
+    let mut value: Option<T> = None;
+    for elem in it {
+        if value.is_none() {
+            value = Some(elem);
+        } else if value != Some(elem) {
+            return false;
+        }
+    }
+    true
 }

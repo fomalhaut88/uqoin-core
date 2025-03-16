@@ -46,19 +46,27 @@ impl Pool {
     }
 
     /// Get ready transactions for next block.
-    pub fn get_ready(&self) -> Vec<Transaction> {
+    pub fn get_ready(&self, owner_coins_map: &OwnerCoinsMap) -> Vec<Transaction> {
         // Transactions to return
         let mut transactions = vec![];
 
-        // // Validator resource
-        // let mut validator_resource = owner_coins_map[&self.config.validator]
-        //     .iter().map(|(order, coins)| 
-        //         (*order, Vec::<U256>::from_iter(coins.iter().cloned()))
-        //     ).collect::<HashMap<u64, Vec<U256>>>();
+        // Validator resource
+        let mut validator_resource = owner_coins_map[&self.config.validator]
+            .iter().map(|(order, coins)| 
+                (*order, Vec::<U256>::from_iter(coins.iter().cloned()))
+            ).collect::<HashMap<u64, Vec<U256>>>();
+
+        // Repeated coins are not valid
+        let mut coin_set = HashSet::new();
 
         for group in self.groups.iter() {
             // Check same coins
-            // ...
+            if group.transactions().iter().any(|tr| coin_set.contains(&tr.coin)) {
+                continue;
+            }
+            for tr in group.transactions().iter() {
+                coin_set.insert(tr.coin.clone());
+            }
 
             // Add ext transactions
             // ...
