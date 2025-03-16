@@ -191,6 +191,11 @@ impl Group {
         self.0.get(fee_ix)
     }
 
+    /// Get hash of the group as the hash of leading transaction.
+    pub fn get_hash(&self) -> U256 {
+        self.0[0].get_hash()
+    }
+
     /// Get total number of transactions.
     pub fn len(&self) -> usize {
         self.0.len()

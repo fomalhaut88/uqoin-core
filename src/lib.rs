@@ -10,4 +10,4 @@ pub mod transaction;
 pub mod block;
 pub mod blockchain;
 pub mod state;
-// pub mod pool;
+pub mod pool;
