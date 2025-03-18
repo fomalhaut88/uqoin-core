@@ -38,8 +38,8 @@ impl Seed {
     /// Get value of the seed.
     pub fn value(&self) -> U256 {
         // TODO: Maybe I need a different way to generate 256-bit of the seed.
-        let entropy = self.0.to_entropy();
-        u128::from_ne_bytes(entropy.try_into().unwrap()).into()
+        let entropy: [u8; 16] = self.0.to_entropy().try_into().unwrap();
+        u128::from_ne_bytes(entropy).into()
     }
 
     /// Get the mnemonic phrase.
