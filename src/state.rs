@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::utils::*;
-use crate::crypto::Schema;
+use crate::schema::Schema;
 use crate::coin::coin_order;
 use crate::block::Block;
 use crate::transaction::{Transaction, Type};

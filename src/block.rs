@@ -3,7 +3,7 @@ use sha3::{Sha3_256, Digest};
 
 use crate::utils::*;
 use crate::transaction::{Type, Transaction, group_transactions};
-use crate::crypto::Schema;
+use crate::schema::Schema;
 use crate::state::State;
 
 
@@ -192,7 +192,7 @@ impl Block {
 mod tests {
     use super::*;
     use test::Bencher;
-    use crate::crypto::Schema;
+    use crate::schema::Schema;
 
     #[test]
     fn test_mine() {

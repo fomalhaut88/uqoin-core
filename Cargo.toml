@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+bip39 = "2.1.0"
 finitelib = "0.1.10"
 lbasedb = "0.1.6"
 rand = "0.9.0"

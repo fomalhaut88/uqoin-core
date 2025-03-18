@@ -3,7 +3,7 @@ use std::collections::{HashSet, HashMap};
 use rand::Rng;
 
 use crate::utils::*;
-use crate::crypto::Schema;
+use crate::schema::Schema;
 use crate::transaction::{Type, Transaction, Group, group_transactions};
 use crate::block::Block;
 use crate::state::State;

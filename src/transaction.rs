@@ -1,7 +1,7 @@
 use rand::Rng;
 
 use crate::utils::*;
-use crate::crypto::Schema;
+use crate::schema::Schema;
 use crate::coin::coin_is_valid;
 use crate::state::State;
 

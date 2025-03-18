@@ -22,6 +22,11 @@ impl Schema {
         Self { curve, field }
     }
 
+    /// Get ECC curve.
+    pub fn curve(&self) -> &TwistedEdwardsCurve {
+        &self.curve
+    }
+
     /// Generate a random private key.
     pub fn gen_key<R: Rng>(&self, rng: &mut R) -> U256 {
         &rng.random::<U256>() % &self.curve.order
