@@ -12,7 +12,7 @@ pub type Mnemonic = [String; 12];
 
 
 /// 128-bit seed object that can be represented as 256-bit value and 12-words
-/// mnemonic phrase (according to BIP39). Seed may generate wallet sequence.
+/// mnemonic phrase (according to BIP39). Seed may generate key sequence.
 pub struct Seed(Bip39Mnemonic);
 
 
@@ -49,17 +49,16 @@ impl Seed {
             .collect::<Vec<String>>().try_into().unwrap()
     }
 
-    /// Iterate a sequence of private keys for wallets generated from the seed.
-    /// Since the iterator is infinite, use it as `seed.gen_wallet_keys.take(...)`
-    /// or `seed.gen_wallet_keys.nth(...)`. The wallet keys are always the same
-    /// for same seed.
-    pub fn gen_wallet_keys(&self, schema: &Schema) -> impl Iterator<Item = U256> {
+    /// Iterate keys (for wallets, for example) generated from the seed.
+    /// Since the iterator is infinite, use it as `seed.gen_keys.take(...)`
+    /// or `seed.gen_keys.nth(...)`. The keys are always the same for same seed.
+    pub fn gen_keys(&self, schema: &Schema) -> impl Iterator<Item = U256> {
         let curve = schema.curve();
         let value = self.value();
         let mut s = curve.generator.clone();
         std::iter::from_fn(move || {
             curve.mul_scalar_assign(&mut s, value.bit_iter());
-            let key = schema.point_to_number(&s);
+            let key = &schema.point_to_number(&s) % &curve.order;
             Some(key)
         })
     }
@@ -97,13 +96,13 @@ mod tests {
         let seed_from_value = Seed::from_value(&value);
         assert_eq!(seed_from_value.value(), value);
         assert_eq!(seed_from_value.mnemonic(), mnemonic);
-        assert_eq!(seed_from_value.gen_wallet_keys(&schema).nth(3),
-                   seed.gen_wallet_keys(&schema).nth(3));
+        assert_eq!(seed_from_value.gen_keys(&schema).nth(3),
+                   seed.gen_keys(&schema).nth(3));
 
         let seed_from_mnemonic = Seed::from_mnemonic(&mnemonic);
         assert_eq!(seed_from_mnemonic.value(), value);
         assert_eq!(seed_from_mnemonic.mnemonic(), mnemonic);
-        assert_eq!(seed_from_mnemonic.gen_wallet_keys(&schema).nth(3),
-                   seed.gen_wallet_keys(&schema).nth(3));
+        assert_eq!(seed_from_mnemonic.gen_keys(&schema).nth(3),
+                   seed.gen_keys(&schema).nth(3));
     }
 }
