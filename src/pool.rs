@@ -9,53 +9,52 @@ use crate::block::Block;
 use crate::state::State;
 
 
-/// Config for pool instance.
-pub struct PoolConfig {
-    validator: U256,
-}
+// /// Config for pool instance.
+// pub struct PoolConfig {
+//     pub validator_key: U256,
+// }
 
 
-/// Request status.
-#[derive(PartialEq)]
-pub enum RequestStatus {
-    Pending,
-    Success,
-    Cancel,
-}
+// /// Request status.
+// #[derive(PartialEq)]
+// pub enum RequestStatus {
+//     Pending,
+//     Success,
+//     Cancel,
+// }
 
 
-/// Request group that keep the status information.
-pub struct Request {
-    /// Group to process.
-    pub group: Group,
+// /// Request group that keep the status information.
+// pub struct Request {
+//     /// Group to process.
+//     pub group: Group,
 
-    /// Timestamp.
-    pub ts: u64,
+//     /// Timestamp.
+//     pub ts: u64,
 
-    /// Status of the request.
-    pub status: RequestStatus,
+//     /// Status of the request.
+//     pub status: RequestStatus,
 
-    /// Transaction index (tix) in the inserted block.
-    pub tix: Option<u64>,
-}
+//     /// Transaction index (tix) in the inserted block.
+//     pub tix: Option<u64>,
+// }
 
 
-/// Request mapping group hash -> request.
-pub type RequestMap = HashMap<U256, Request>;
+// /// Request mapping group hash -> request.
+// pub type RequestMap = HashMap<U256, Request>;
 
 
 /// Validator pool that keeps requested transactions.
 pub struct Pool {
-    config: PoolConfig,
+    // config: PoolConfig,
     groups: Vec<Group>,
 }
 
 
 impl Pool {
     /// Create an empty pool.
-    pub fn new(config: PoolConfig) -> Self {
+    pub fn new() -> Self {
         Self {
-            config,
             groups: Vec::new(),
         }
     }
@@ -76,9 +75,12 @@ impl Pool {
         // Transactions to return
         let mut transactions = vec![];
 
+        // Validator public
+        let validator = schema.get_public(validator_key);
+
         // Validator resource
         let mut validator_resource = if let Some(coins_map) = 
-                state.get_coins(&self.config.validator) {
+                state.get_coins(&validator) {
             coins_map.iter().map(|(order, coins)| 
                 (*order, Vec::<U256>::from_iter(coins.iter().cloned()))
             ).collect::<HashMap<u64, Vec<U256>>>()

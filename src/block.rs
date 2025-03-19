@@ -1,5 +1,6 @@
 use rand::Rng;
 use sha3::{Sha3_256, Digest};
+use serde::{Serialize, Deserialize};
 
 use crate::utils::*;
 use crate::transaction::{Type, Transaction, group_transactions};
@@ -8,7 +9,7 @@ use crate::state::State;
 
 
 /// Basic structure for block.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Block {
     pub tix: u64,
     pub size: u64,
