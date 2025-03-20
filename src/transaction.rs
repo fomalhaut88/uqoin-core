@@ -117,7 +117,7 @@ impl Transaction {
 /// 3) consistent transaction order, types, values and count. Empty group is
 /// not allowed. Coins are supposed to be correct, group does not check them,
 /// use `Block::validate_coins` to check if necessary.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct Group(Vec<Transaction>);
 
 
@@ -289,7 +289,7 @@ impl Group {
 /// count depending on the group type. Extension can be empty for `Transfer` 
 /// type. Coins are supposed to be correct, extension does not check them,
 /// use `Block::validate_coins` to check if necessary.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct Ext(Vec<Transaction>);
 
 
