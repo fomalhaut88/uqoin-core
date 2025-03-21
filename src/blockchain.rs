@@ -3,7 +3,6 @@ use tokio::sync::Mutex;
 use lbasedb::col::Col;
 use lbasedb::path_concat;
 
-use crate::utils::*;
 use crate::transaction::Transaction;
 use crate::block::Block;
 
@@ -67,24 +66,19 @@ impl Blockchain {
     }
 
     /// Get transactions of a block by number.
-    pub async fn get_transactions_of_block(&self, bix: u64) -> 
+    pub async fn get_transactions_of_block(&self, block: &Block) -> 
                                            TokioResult<Vec<Transaction>> {
-        let block = self.get_block(bix).await?;
         self.transaction_col.lock().await
-            .get_many(block.tix as usize - 1, block.size as usize).await
+            .get_many(block.offset as usize, block.size as usize).await
     }
 
     /// Push new block with transactions. The function returns the number of 
     /// the inserted block.
-    pub async fn push_new_block(&self, transactions: &[Transaction], 
-                                hash_prev: &U256, validator: &U256, 
-                                nonce: &U256, hash: &U256) -> 
+    pub async fn push_new_block(&self, block: &Block,
+                                transactions: &[Transaction]) -> 
                                 TokioResult<u64> {
-        let tix = self.transaction_col.lock().await
-            .push_many(transactions).await? + 1;
-        let block = Block::new(tix as u64, transactions.len() as u64,
-                               hash_prev.clone(), validator.clone(), 
-                               nonce.clone(), hash.clone());
+        self.transaction_col.lock().await.update_many(block.offset as usize, 
+                                                      transactions).await?;
         let bix = self.block_col.lock().await.push(&block).await? as u64 + 1;
         Ok(bix)
     }
@@ -93,7 +87,7 @@ impl Blockchain {
     pub async fn truncate(&self, block_count: u64) -> TokioResult<()> {
         if block_count > 0 {
             let block = self.get_block(block_count).await?;
-            let transaction_count = (block.tix + block.size) - 1;
+            let transaction_count = block.offset + block.size;
             self.block_col.lock().await.resize(block_count as usize).await?;
             self.transaction_col.lock().await
                 .resize(transaction_count as usize).await?;

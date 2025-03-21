@@ -9,42 +9,8 @@ use crate::block::Block;
 use crate::state::State;
 
 
-// /// Config for pool instance.
-// pub struct PoolConfig {
-//     pub validator_key: U256,
-// }
-
-
-// /// Request status.
-// #[derive(PartialEq)]
-// pub enum RequestStatus {
-//     Pending,
-//     Success,
-//     Cancel,
-// }
-
-
-// /// Request group that keep the status information.
-// pub struct Request {
-//     /// Group to process.
-//     pub group: Group,
-
-//     /// Timestamp.
-//     pub ts: u64,
-
-//     /// Status of the request.
-//     pub status: RequestStatus,
-
-//     /// Transaction index (tix) in the inserted block.
-//     pub tix: Option<u64>,
-// }
-
-
-// /// Request mapping group hash -> request.
-// pub type RequestMap = HashMap<U256, Request>;
-
-
 /// Validator pool that keeps requested transactions.
+#[derive(Debug)]
 pub struct Pool {
     // config: PoolConfig,
     groups: Vec<Group>,
@@ -71,7 +37,7 @@ impl Pool {
 
     /// Get ready transactions for next block.
     pub fn prepare<R: Rng>(&self, rng: &mut R, schema: &Schema, state: &State, 
-                           validator_key: &U256) -> Vec<Transaction> {
+                           validator_key: &U256, groups_max: usize) -> Vec<Transaction> {
         // Transactions to return
         let mut transactions = vec![];
 
@@ -92,10 +58,10 @@ impl Pool {
         let mut coin_set = HashSet::new();
 
         // Look for all groups
-        for group in self.groups.iter() {
+        for group in self.groups.iter().take(groups_max) {
             // Get sender and order
             let sender = group.get_sender(schema);
-            let order = group.get_order(state);
+            let order = group.get_order(state, schema);
 
             // Skip if the group contains any seen coin
             if group.transactions().iter()

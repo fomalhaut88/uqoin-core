@@ -11,7 +11,7 @@ use crate::state::State;
 /// Basic structure for block.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
-    pub tix: u64,
+    pub offset: u64,
     pub size: u64,
     pub hash_prev: U256,
     pub validator: U256,
@@ -22,13 +22,13 @@ pub struct Block {
 
 impl Block {
     /// New block.
-    pub fn new(tix: u64, size: u64, hash_prev: U256, validator: U256, 
+    pub fn new(offset: u64, size: u64, hash_prev: U256, validator: U256, 
                nonce: U256, hash: U256) -> Self {
-        Self { tix, size, hash_prev, validator, nonce, hash }
+        Self { offset, size, hash_prev, validator, nonce, hash }
     }
 
     /// Build a new block for the transactions. It validates the final hash.
-    pub fn build(tix: u64, hash_prev: U256, validator: U256, 
+    pub fn build(offset: u64, hash_prev: U256, validator: U256, 
                  transactions: &[Transaction], nonce: U256,
                  complexity: usize, schema: &Schema,
                  state: &State) -> Option<Self> {
@@ -43,7 +43,7 @@ impl Block {
 
             // Validate hash
             if Self::validate_hash(&hash, transactions.len(), complexity) {
-                Some(Self::new(tix, transactions.len() as u64, hash_prev,
+                Some(Self::new(offset, transactions.len() as u64, hash_prev,
                                validator, nonce, hash))
             } else {
                 None
@@ -103,8 +103,8 @@ impl Block {
 
             // Check value
             if ext.get_type() != Type::Transfer {
-                if group.get_order(state) != 
-                   ext.get_order(state) {
+                if group.get_order(state, schema) != 
+                   ext.get_order(state, schema) {
                     return false;
                 }
             }
@@ -144,7 +144,8 @@ impl Block {
     /// Find correct nonce bytes to mine the block.
     pub fn mine<R: Rng>(rng: &mut R, block_hash_prev: &U256, validator: &U256, 
                         transactions: &[Transaction], 
-                        complexity: usize) -> [u8; 32] {
+                        complexity: usize, 
+                        iterations: Option<usize>) -> Option<[u8; 32]> {
         // Calculate the message bytes
         let msg = Self::calc_msg(block_hash_prev, validator, transactions);
 
@@ -159,7 +160,14 @@ impl Block {
         hasher.update(msg.to_bytes());
 
         // Mining loop
-        loop {
+        for iteration in 0.. {
+            // Stop by iterations
+            if let Some(iterations) = iterations {
+                if iteration >= iterations {
+                    break;
+                }
+            }
+
             // Clone the hasher state before adding nonce
             let mut hasher_clone = hasher.clone();
 
@@ -174,16 +182,22 @@ impl Block {
 
             // If the hash is valid return the generated nonce and U256
             if Self::is_hash_valid(&hash_bytes, &limit_hash) {
-                return nonce_bytes;
+                return Some(nonce_bytes);
             }
         }
+
+        // Return `None` if nothing mined
+        None
     }
 
     /// Calculate maximum allowed block hash depending on the size.
-    fn calc_limit_hash(size: usize, complexity: usize) -> Vec<u8> {
+    fn calc_limit_hash(_size: usize, complexity: usize) -> Vec<u8> {
+        // TODO: Implement a better way to limit hash. Current ones don't
+        // depend on the size and depend too hard on test.
         let mut num = U256::from(1);
         num <<= 255 - complexity;
-        let bytes = num.divide_unit(size as u64 + 1).unwrap().0.to_bytes();
+        // let bytes = num.divide_unit(size as u64 + 1).unwrap().0.to_bytes();
+        let bytes = num.to_bytes();
         bytes.into_iter().rev().collect::<Vec<u8>>()
     }
 }
@@ -212,7 +226,8 @@ mod tests {
 
         // Mining the nonce
         let nonce_bytes = Block::mine(&mut rng, &block_hash_prev, &validator, 
-                                      &transactions, complexity);
+                                      &transactions, complexity, 
+                                      Some(10000)).unwrap();
 
         // Calculate hash
         let msg = Block::calc_msg(&block_hash_prev, &validator, &transactions);
@@ -249,7 +264,7 @@ mod tests {
 
         bencher.iter(|| {
             let _nonce = Block::mine(&mut rng, &block_hash_prev, &validator, 
-                                     &transactions, 0);
+                                     &transactions, 0, None);
         });
     }
 }

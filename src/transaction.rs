@@ -3,7 +3,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::utils::*;
 use crate::schema::Schema;
-use crate::coin::coin_is_valid;
+use crate::coin::{coin_is_valid, coin_order};
 use crate::state::State;
 
 
@@ -76,8 +76,14 @@ impl Transaction {
     }
 
     /// Get order of the coin.
-    pub fn get_order(&self, state: &State) -> u64 {
-        state.get_coin_info(&self.coin).unwrap().order
+    pub fn get_order(&self, state: &State, schema: &Schema) -> u64 {
+        if let Some(coin_info) = state.get_coin_info(&self.coin) {
+            coin_info.order
+        } else {
+            let block_hash_prev = &state.get_last_block_info().hash;
+            let miner = self.get_sender(schema);
+            coin_order(&self.coin, block_hash_prev, &miner)
+        }
     }
 
     /// Validate coin in the transaction. The checks:
@@ -91,18 +97,11 @@ impl Transaction {
         // Try to find the coin in coin-owner map
         if let Some(owner) = state.get_owner(&self.coin) {
             // Check ownership
-            if owner != sender {
-                return false;
-            }
+            (owner == sender) && (owner != &self.addr)
         } else {
             // Check mining
-            if !coin_is_valid(&self.coin, &state.get_last_block_info().hash, 
-                              sender) {
-                return false;
-            }
+            coin_is_valid(&self.coin, &state.get_last_block_info().hash, sender)
         }
-
-        true
     }
 
     /// Calculate transaction message as hash of the `coin` and `addr`.
@@ -203,11 +202,11 @@ impl Group {
     }
 
     /// Get order of the main coins.
-    pub fn get_order(&self, state: &State) -> u64 {
+    pub fn get_order(&self, state: &State, schema: &Schema) -> u64 {
         match self.get_type() {
-            Type::Split => self.0[0].get_order(state),
-            Type::Merge => self.0[0].get_order(state) + 1,
-            Type::Transfer => self.0[0].get_order(state),
+            Type::Split => self.0[0].get_order(state, schema),
+            Type::Merge => self.0[0].get_order(state, schema) + 1,
+            Type::Transfer => self.0[0].get_order(state, schema),
             _ => panic!("Invalid transactions in the group."),
         }
     }
@@ -262,9 +261,9 @@ impl Group {
                     (transactions[1].get_type() == Type::Merge) && 
                     (transactions[2].get_type() == Type::Merge);
 
-                let order0 = transactions[0].get_order(state);
-                let order1 = transactions[1].get_order(state);
-                let order2 = transactions[2].get_order(state);
+                let order0 = transactions[0].get_order(state, schema);
+                let order1 = transactions[1].get_order(state, schema);
+                let order2 = transactions[2].get_order(state, schema);
 
                 let order_check = (order1 + 1 == order0) && 
                                   (order2 + 1 == order0);
@@ -334,11 +333,11 @@ impl Ext {
     }
 
     /// Get order of the main coins in the extension.
-    pub fn get_order(&self, state: &State) -> u64 {
+    pub fn get_order(&self, state: &State, schema: &Schema) -> u64 {
         match self.0.len() {
             0 => 0,
-            1 => self.0[0].get_order(state),
-            3 => &self.0[0].get_order(state) + 1,
+            1 => self.0[0].get_order(state, schema),
+            3 => &self.0[0].get_order(state, schema) + 1,
             _ => panic!("Invalid transactions in the group."),
         }
     }
@@ -385,9 +384,9 @@ impl Ext {
                     (&transactions[2].addr == addr);
 
                 // Check order
-                let order0 = transactions[0].get_order(state);
-                let order1 = transactions[1].get_order(state);
-                let order2 = transactions[2].get_order(state);
+                let order0 = transactions[0].get_order(state, schema);
+                let order1 = transactions[1].get_order(state, schema);
+                let order2 = transactions[2].get_order(state, schema);
 
                 let order_check = (order1 + 1 == order0) && 
                                   (order2 + 1 == order0);

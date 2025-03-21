@@ -34,6 +34,9 @@ pub struct BlockInfo {
     /// Last block number.
     pub bix: u64,
 
+    /// Total number of transaction up to this block (`tix` for the next block).
+    pub offset: u64,
+
     /// Last block hash.
     pub hash: U256,
 }
@@ -71,7 +74,8 @@ impl State {
             coin_info_map: CoinInfoMap::new(),
             owner_coins_map: OwnerCoinsMap::new(),
             last_block_info: BlockInfo {
-                bix: 0, 
+                bix: 0,
+                offset: 0,
                 hash: U256::from_hex(GENESIS_HASH),
             },
         }
@@ -102,12 +106,13 @@ impl State {
                    transactions: &[Transaction], schema: &Schema) {
         // Check the block
         assert_eq!(bix, self.last_block_info.bix + 1);
+        assert_eq!(block.offset, self.last_block_info.offset);
         assert_eq!(block.hash_prev, self.last_block_info.hash);
 
         // Iterate transactions
         for (ix, transaction) in transactions.iter().enumerate() {
             // tix
-            let tix = block.tix + ix as u64;
+            let tix = block.offset + ix as u64 + 1;
 
             // Get sender
             let sender = transaction.get_sender(schema);
@@ -152,6 +157,7 @@ impl State {
 
         // Update last block info
         self.last_block_info.bix = bix;
+        self.last_block_info.offset += transactions.len() as u64;
         self.last_block_info.hash = block.hash.clone();
     }
 
@@ -160,16 +166,19 @@ impl State {
                      transactions: &[Transaction], schema: &Schema) {
         // Check the block
         assert_eq!(bix, self.last_block_info.bix);
+        assert_eq!(block.offset + transactions.len() as u64, 
+                   self.last_block_info.offset);
         assert_eq!(block.hash, self.last_block_info.hash);
 
         // Update last block info
         self.last_block_info.bix -= 1;
+        self.last_block_info.offset = block.offset;
         self.last_block_info.hash = block.hash_prev.clone();
 
         // Iterate transactions
         for (ix, transaction) in transactions.iter().enumerate() {
             // tix
-            let tix = block.tix + ix as u64;
+            let tix = block.offset + ix as u64 + 1;
 
             // Get sender
             let sender = transaction.get_sender(schema);
