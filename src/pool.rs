@@ -37,7 +37,8 @@ impl Pool {
 
     /// Get ready transactions for next block.
     pub fn prepare<R: Rng>(&self, rng: &mut R, schema: &Schema, state: &State, 
-                           validator_key: &U256, groups_max: usize) -> Vec<Transaction> {
+                           validator_key: &U256, groups_max: Option<usize>) -> 
+                           Vec<Transaction> {
         // Transactions to return
         let mut transactions = vec![];
 
@@ -58,6 +59,7 @@ impl Pool {
         let mut coin_set = HashSet::new();
 
         // Look for all groups
+        let groups_max = groups_max.unwrap_or(1000000000);
         for group in self.groups.iter().take(groups_max) {
             // Get sender and order
             let sender = group.get_sender(schema);

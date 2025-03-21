@@ -7,10 +7,7 @@ use crate::utils::*;
 /// as block_hash XOR miner.
 pub fn coin_is_valid(coin: &U256, block_hash_prev: &U256, 
                      miner: &U256) -> bool {
-    (coin.as_array()[0] == 
-        miner.as_array()[0] ^ block_hash_prev.as_array()[0]) &&
-    (coin.as_array()[1] == 
-        miner.as_array()[1] ^ block_hash_prev.as_array()[1])
+    coin.as_array()[2..4] == coin_tail(block_hash_prev, miner)
 }
 
 
@@ -29,6 +26,14 @@ pub fn coin_symbol(order: u64) -> String {
 }
 
 
+/// Get coin order by symbol.
+pub fn coin_order_by_symbol(symbol: &str) -> u64 {
+    let letter = symbol.chars().next().unwrap() as u64 - 'A' as u64;
+    let number: u64 = symbol[1..].parse().unwrap();
+    10 * letter + number.trailing_zeros() as u64
+}
+
+
 /// Get coin value.
 pub fn coin_value(order: u64) -> U256 {
     &U256::from(1) << order as usize
@@ -41,18 +46,27 @@ pub fn coin_random<R: Rng>(rng: &mut R, block_hash_prev: &U256,
     // Empty coin
     let mut coin = U256::from(0);
 
-    // Random 128-bit tail
-    coin.as_array_mut()[2] = rng.random::<u64>();
-    coin.as_array_mut()[3] = rng.random::<u64>();
+    // Random 128-bit head
+    coin.as_array_mut()[0..2].clone_from_slice(
+        &rng.random::<[u64; 2]>()
+    );
 
-    // Head is XOR of miner and block_hash
-    coin.as_array_mut()[0] = 
-        miner.as_array()[0] ^ block_hash_prev.as_array()[0];
-    coin.as_array_mut()[1] = 
-        miner.as_array()[1] ^ block_hash_prev.as_array()[1];
+    // Tail is XOR of miner and block_hash
+    coin.as_array_mut()[2..4].clone_from_slice(
+        &coin_tail(block_hash_prev, miner)
+    );
     
     // Return coin
     coin
+}
+
+
+/// Calculate last two u64 digits (128 bits) from `block_hash_prev` and `miner`.
+pub fn coin_tail(block_hash_prev: &U256, miner: &U256) -> [u64; 2] {
+    [
+        miner.as_array()[2] ^ block_hash_prev.as_array()[2],
+        miner.as_array()[3] ^ block_hash_prev.as_array()[3],
+    ]
 }
 
 
@@ -75,7 +89,7 @@ mod tests {
     #[test]
     fn test_coin() {
         let coin = U256::from_hex(
-            "AA813FCF71922F189450D4227C921DB4F2A814209B53610902737FBF0182EBBC"
+            "E764663DA70C4805F07F733C2A782116C7492C70EE67DD39C5DDA817816B8AB2"
         );
         let block_hash_prev = U256::from_hex(
             "0000001B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
@@ -86,7 +100,7 @@ mod tests {
 
         assert_eq!(
             hash_of_u256([&coin, &block_hash_prev, &miner].into_iter()).to_hex(), 
-            "00000DE62F61A94997E66136A71E9881B87FFB970CA73051B8E5C3137012F1B7"
+            "00000A20A6620E0D48C7BDD76BF8E92D0CD26AFC4AB1A39A8A5DF8D7D7103F88"
         );
 
         assert_eq!(coin_is_valid(&coin, &block_hash_prev, &miner), true);
@@ -96,6 +110,15 @@ mod tests {
         assert_eq!(order, 20);
         assert_eq!(coin_symbol(order), "C1");
         assert_eq!(coin_value(order), &U256::from(1) << 20);
+    }
+
+    #[test]
+    fn test_coin_order_by_symbol() {
+        assert_eq!(coin_order_by_symbol("C32"), 25);
+        assert_eq!(coin_order_by_symbol("D4"), 32);
+        assert_eq!(coin_order_by_symbol("B1"), 10);
+        assert_eq!(coin_order_by_symbol("A1"), 0);
+        assert_eq!(coin_order_by_symbol("Z32"), 255);
     }
 
     #[test]
