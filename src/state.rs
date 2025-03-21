@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use serde::{Serialize, Deserialize};
+
 use crate::utils::*;
 use crate::schema::Schema;
 use crate::coin::coin_order;
@@ -8,12 +10,12 @@ use crate::transaction::{Transaction, Type};
 
 
 /// Hash of the zero block.
-const GENESIS_HASH: &str = 
+pub const GENESIS_HASH: &str = 
     "E12BA98A17FD8F70608668AA32AEB3BE1F202B4BD69880A6C0CFE855B1A0706B";
 
 
 /// Information about coin.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CoinInfo {
     /// Order of the coin (value is 2^order)
     pub order: u64,
@@ -27,8 +29,8 @@ pub struct CoinInfo {
 
 
 /// Information about the last block.
-#[derive(Clone)]
-pub struct LastBlockInfo {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockInfo {
     /// Last block number.
     pub bix: u64,
 
@@ -52,12 +54,12 @@ pub type OwnerCoinsMap = HashMap<U256, OrderCoinsMap>;
 
 /// Uqoin state for fast access to the last block, coin and ownership
 /// information.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct State {
     coin_owner_map: CoinOwnerMap,
     coin_info_map: CoinInfoMap,
     owner_coins_map: OwnerCoinsMap,
-    last_block_info: LastBlockInfo,
+    last_block_info: BlockInfo,
 }
 
 
@@ -68,7 +70,7 @@ impl State {
             coin_owner_map: CoinOwnerMap::new(),
             coin_info_map: CoinInfoMap::new(),
             owner_coins_map: OwnerCoinsMap::new(),
-            last_block_info: LastBlockInfo {
+            last_block_info: BlockInfo {
                 bix: 0, 
                 hash: U256::from_hex(GENESIS_HASH),
             },
@@ -91,7 +93,7 @@ impl State {
     }
 
     /// Get last block info.
-    pub fn get_last_block_info(&self) -> &LastBlockInfo {
+    pub fn get_last_block_info(&self) -> &BlockInfo {
         &self.last_block_info
     }
 

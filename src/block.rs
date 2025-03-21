@@ -9,7 +9,7 @@ use crate::state::State;
 
 
 /// Basic structure for block.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
     pub tix: u64,
     pub size: u64,
