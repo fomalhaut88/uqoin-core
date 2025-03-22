@@ -5,7 +5,7 @@ use serde::{Serialize, Deserialize};
 use crate::utils::*;
 use crate::transaction::{Type, Transaction, group_transactions};
 use crate::schema::Schema;
-use crate::state::State;
+use crate::state::{State, BlockInfo};
 
 
 /// Basic structure for block.
@@ -25,6 +25,49 @@ impl Block {
     pub fn new(offset: u64, size: u64, hash_prev: U256, validator: U256, 
                nonce: U256, hash: U256) -> Self {
         Self { offset, size, hash_prev, validator, nonce, hash }
+    }
+
+    /// Full validation of the block that includes transactions, info of the 
+    /// previous block, complexity, state between this block and the previous
+    /// one.
+    pub fn validate(&self, transactions: &[Transaction], 
+                    block_info_prev: &BlockInfo, complexity: usize, 
+                    schema: &Schema, state: &State) -> bool {
+        // Check block hash
+        if block_info_prev.hash != self.hash_prev {
+            return false;
+        }
+
+        // Check block offset
+        if block_info_prev.offset == self.offset {
+            return false;        
+        }
+
+        // Validate transactions
+        if !Self::validate_transactions(transactions, &self.validator, schema, 
+                                        state) {
+            return false;
+        }
+
+        // Calculate the message
+        let msg = Self::calc_msg(&self.hash_prev, &self.validator, 
+                                 transactions);
+
+        // Calculate the hash
+        let hash = Self::calc_hash(&msg, &self.nonce);
+
+        // Check hash
+        if hash != self.hash {
+            return false;
+        }
+
+        // Validate hash
+        if !Self::validate_hash(&self.hash, transactions.len(), complexity) {
+            return false;
+        }
+
+        // Return true
+        true
     }
 
     /// Build a new block for the transactions. It validates the final hash.

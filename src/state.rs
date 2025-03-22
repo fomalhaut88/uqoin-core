@@ -34,7 +34,8 @@ pub struct BlockInfo {
     /// Last block number.
     pub bix: u64,
 
-    /// Total number of transaction up to this block (`tix` for the next block).
+    /// Total number of transaction up to this block (`offset` for the next 
+    /// block).
     pub offset: u64,
 
     /// Last block hash.
