@@ -191,13 +191,10 @@ impl Block {
     }
 
     /// Calculate maximum allowed block hash depending on the size.
-    fn calc_limit_hash(_size: usize, complexity: usize) -> Vec<u8> {
-        // TODO: Implement a better way to limit hash. Current ones don't
-        // depend on the size and depend too hard on test.
+    fn calc_limit_hash(size: usize, complexity: usize) -> Vec<u8> {
         let mut num = U256::from(1);
         num <<= 255 - complexity;
-        // let bytes = num.divide_unit(size as u64 + 1).unwrap().0.to_bytes();
-        let bytes = num.to_bytes();
+        let bytes = num.divide_unit(size as u64 + 1).unwrap().0.to_bytes();
         bytes.into_iter().rev().collect::<Vec<u8>>()
     }
 }
