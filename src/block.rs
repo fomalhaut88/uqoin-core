@@ -44,7 +44,7 @@ impl Block {
         }
 
         // Check block offset
-        if block_info_prev.offset == self.offset {
+        if block_info_prev.offset != self.offset {
             return false;        
         }
 

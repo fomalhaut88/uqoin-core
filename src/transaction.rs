@@ -8,7 +8,7 @@ use crate::state::State;
 
 
 /// Types of transaction or group. In case of group Fee must be incorrect.
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Type {
     Transfer,
     Fee,
