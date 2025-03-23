@@ -243,9 +243,14 @@ impl Block {
 
     /// Calculate maximum allowed block hash depending on the size.
     fn calc_limit_hash(size: usize, complexity: usize) -> Vec<u8> {
+        assert!(complexity > 0);
         let mut num = U256::from(1);
-        num <<= 255 - complexity;
-        let bytes = num.divide_unit(size as u64 + 1).unwrap().0.to_bytes();
+        num <<= 256 - complexity;
+        let bytes = if size > 1 {
+            num.divide_unit(size as u64).unwrap().0.to_bytes()
+        } else {
+            num.to_bytes()
+        };
         bytes.into_iter().rev().collect::<Vec<u8>>()
     }
 }
@@ -381,33 +386,35 @@ mod tests {
 
         bencher.iter(|| {
             let _nonce = Block::mine(&mut rng, &block_hash_prev, &validator, 
-                                     &transactions, 0, None);
+                                     &transactions, 1, None);
         });
     }
     
-    #[bench]
-    fn bench_mine_calibration(bencher: &mut Bencher) {
-        // The result must be ~1 s/iter
-        let complexity = 20;
+    // Uncomment it to start calibration: 
+    //     `cargo bench block::tests::bench_mine_calibration`
+    // #[bench]
+    // fn bench_mine_calibration(bencher: &mut Bencher) {
+    //     // The result must be ~1 s/iter
+    //     let complexity = 20;
 
-        let mut rng = rand::rng();
-        let schema = Schema::new();
+    //     let mut rng = rand::rng();
+    //     let schema = Schema::new();
 
-        let block_hash_prev: U256 = rng.random();
-        let validator: U256 = schema.gen_pair(&mut rng).1;
-        let coin: U256 = rng.random();
-        let addr: U256 = rng.random();
-        let key: U256 = schema.gen_key(&mut rng);
+    //     let block_hash_prev: U256 = rng.random();
+    //     let validator: U256 = schema.gen_pair(&mut rng).1;
+    //     let coin: U256 = rng.random();
+    //     let addr: U256 = rng.random();
+    //     let key: U256 = schema.gen_key(&mut rng);
 
-        let transactions: Vec<Transaction> = vec![
-            Transaction::build(
-                &mut rng, coin.clone(), addr.clone(), &key, &schema
-            ),
-        ];
+    //     let transactions: Vec<Transaction> = vec![
+    //         Transaction::build(
+    //             &mut rng, coin.clone(), addr.clone(), &key, &schema
+    //         ),
+    //     ];
 
-        bencher.iter(|| {
-            let _nonce = Block::mine(&mut rng, &block_hash_prev, &validator, 
-                                     &transactions, complexity, None);
-        });
-    }
+    //     bencher.iter(|| {
+    //         let _nonce = Block::mine(&mut rng, &block_hash_prev, &validator, 
+    //                                  &transactions, complexity, None);
+    //     });
+    // }
 }
