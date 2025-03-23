@@ -290,6 +290,22 @@ pub struct BlockData {
 
 
 impl BlockData {
+    /// Get data of the genesis block (`bix=0`).
+    pub fn genesis() -> Self {
+        Self {
+            bix: 0,
+            block: Block {
+                offset: 0,
+                size: 0,
+                hash_prev: U256::from(0),
+                validator: U256::from(0),
+                nonce: U256::from(0),
+                hash: U256::from_hex(GENESIS_HASH),
+            },
+            transactions: Vec::new(),
+        }
+    }
+
     /// Get short information.
     pub fn get_block_info(&self) -> BlockInfo {
         BlockInfo {

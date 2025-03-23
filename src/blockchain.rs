@@ -4,7 +4,7 @@ use lbasedb::col::Col;
 use lbasedb::path_concat;
 
 use crate::transaction::Transaction;
-use crate::block::Block;
+use crate::block::{Block, BlockInfo, BlockData};
 
 
 /// Basic blockchain information: transactions and blocks.
@@ -46,23 +46,52 @@ impl Blockchain {
 
     /// Get block by number.
     pub async fn get_block(&self, bix: u64) -> TokioResult<Block> {
-        self.block_col.lock().await.get(bix as usize - 1).await
+        if bix == 0 {
+            Err(ErrorKind::NotFound.into())
+        } else {
+            self.block_col.lock().await.get(bix as usize - 1).await
+        }
     }
 
     /// Get transaction by number.
     pub async fn get_transaction(&self, tix: u64) -> 
                                  TokioResult<Transaction> {
-        self.transaction_col.lock().await.get(tix as usize - 1).await
+        if tix == 0 {
+            Err(ErrorKind::NotFound.into())
+        } else {
+            self.transaction_col.lock().await.get(tix as usize - 1).await
+        }
+    }
+
+    /// Get block info by number.
+    pub async fn get_block_info(&self, bix: u64) -> TokioResult<BlockInfo> {
+        if bix == 0 {
+            Ok(BlockInfo::genesis())
+        } else {
+            let block = self.get_block(bix).await?;
+            Ok(BlockInfo {
+                bix,
+                offset: block.offset + block.size,
+                hash: block.hash,
+            })
+        }
+    }
+
+    /// Get block data by number.
+    pub async fn get_block_data(&self, bix: u64) -> TokioResult<BlockData> {
+        if bix == 0 {
+            Ok(BlockData::genesis())
+        } else {
+            let block = self.get_block(bix).await?;
+            let transactions = self.get_transactions_of_block(&block).await?;
+            Ok(BlockData { bix, block, transactions })
+        }
     }
 
     /// Get last block.
     pub async fn get_last_block(&self) -> TokioResult<Block> {
         let bix = self.get_block_count().await?;
-        if bix > 0 {
-            self.get_block(bix).await
-        } else {
-            Err(ErrorKind::NotFound.into())
-        }
+        self.get_block(bix).await
     }
 
     /// Get transactions of a block by number.

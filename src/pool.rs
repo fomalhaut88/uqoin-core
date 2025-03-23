@@ -132,7 +132,7 @@ impl Pool {
             |gr| gr.transactions().iter().all(|tr| !coins.contains(&tr.coin))
         ).cloned().collect();
 
-        // Update existing groups.
+        // Update existing groups
         self.update_groups(schema, state);
     }
 
@@ -145,7 +145,7 @@ impl Pool {
             self.add_group(&gr, schema, state);
         }
 
-        // Update existing groups.
+        // Update existing groups
         self.update_groups(schema, state);
     }
 
@@ -155,5 +155,16 @@ impl Pool {
         self.groups = self.groups.iter().filter(
             |gr| Block::validate_coins(gr.transactions(), schema, state)
         ).cloned().collect();
+    }
+
+    /// Merge pools, the state must correspond to `other` pool.
+    pub fn merge(&mut self, other: &Self, schema: &Schema, state: &State) {
+        // Update existing groups
+        self.update_groups(schema, state);
+
+        // Add groups
+        for gr in other.groups.iter() {
+            self.add_group(&gr, schema, state);
+        }
     }
 }
