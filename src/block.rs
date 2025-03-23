@@ -5,7 +5,12 @@ use serde::{Serialize, Deserialize};
 use crate::utils::*;
 use crate::transaction::{Type, Transaction, group_transactions};
 use crate::schema::Schema;
-use crate::state::{State, BlockInfo};
+use crate::state::State;
+
+
+/// Hash of the zero block.
+pub const GENESIS_HASH: &str = 
+    "E12BA98A17FD8F70608668AA32AEB3BE1F202B4BD69880A6C0CFE855B1A0706B";
 
 
 /// Basic structure for block.
@@ -239,6 +244,59 @@ impl Block {
         num <<= 255 - complexity;
         let bytes = num.divide_unit(size as u64 + 1).unwrap().0.to_bytes();
         bytes.into_iter().rev().collect::<Vec<u8>>()
+    }
+}
+
+
+/// Short information about the block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockInfo {
+    /// Block number.
+    pub bix: u64,
+
+    /// Total number of transaction up to this block (`offset` for the next 
+    /// block).
+    pub offset: u64,
+
+    /// Last block hash.
+    pub hash: U256,
+}
+
+
+impl BlockInfo {
+    /// Get information of the genesis block (`bix=0`).
+    pub fn genesis() -> Self {
+        Self {
+            bix: 0,
+            offset: 0,
+            hash: U256::from_hex(GENESIS_HASH),
+        }
+    }
+}
+
+
+/// Full information about the block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockData {
+    /// Block number.
+    pub bix: u64,
+
+    /// Block data.
+    pub block: Block,
+
+    /// Included transactions.
+    pub transactions: Vec<Transaction>,
+}
+
+
+impl BlockData {
+    /// Get short information.
+    pub fn get_block_info(&self) -> BlockInfo {
+        BlockInfo {
+            bix: self.bix,
+            offset: self.block.offset + self.block.size,
+            hash: self.block.hash.clone(),
+        }
     }
 }
 

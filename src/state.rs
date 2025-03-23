@@ -1,17 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
-use serde::{Serialize, Deserialize};
-
 use crate::utils::*;
 use crate::schema::Schema;
 use crate::coin::coin_order;
-use crate::block::Block;
+use crate::block::{Block, BlockInfo};
 use crate::transaction::{Transaction, Type};
-
-
-/// Hash of the zero block.
-pub const GENESIS_HASH: &str = 
-    "E12BA98A17FD8F70608668AA32AEB3BE1F202B4BD69880A6C0CFE855B1A0706B";
 
 
 /// Information about coin.
@@ -25,21 +18,6 @@ pub struct CoinInfo {
 
     /// Block number where the coin was miner.
     pub bix: u64,
-}
-
-
-/// Information about the last block.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BlockInfo {
-    /// Last block number.
-    pub bix: u64,
-
-    /// Total number of transaction up to this block (`offset` for the next 
-    /// block).
-    pub offset: u64,
-
-    /// Last block hash.
-    pub hash: U256,
 }
 
 
@@ -74,11 +52,7 @@ impl State {
             coin_owner_map: CoinOwnerMap::new(),
             coin_info_map: CoinInfoMap::new(),
             owner_coins_map: OwnerCoinsMap::new(),
-            last_block_info: BlockInfo {
-                bix: 0,
-                offset: 0,
-                hash: U256::from_hex(GENESIS_HASH),
-            },
+            last_block_info: BlockInfo::genesis(),
         }
     }
 

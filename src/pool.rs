@@ -10,7 +10,7 @@ use crate::state::State;
 
 
 /// Validator pool that keeps requested transactions.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Pool {
     // config: PoolConfig,
     groups: Vec<Group>,
