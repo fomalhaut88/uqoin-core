@@ -1,5 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
+use serde::{Serialize, Deserialize};
+use tokio::io::{Result as TokioResult};
+
 use crate::utils::*;
 use crate::schema::Schema;
 use crate::coin::coin_order;
@@ -8,7 +11,7 @@ use crate::transaction::{Transaction, Type};
 
 
 /// Information about coin.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoinInfo {
     /// Order of the coin (value is 2^order)
     pub order: u64,
@@ -36,7 +39,7 @@ pub type OwnerCoinsMap = HashMap<U256, OrderCoinsMap>;
 
 /// Uqoin state for fast access to the last block, coin and ownership
 /// information.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct State {
     coin_owner_map: CoinOwnerMap,
     coin_info_map: CoinInfoMap,
@@ -54,6 +57,20 @@ impl State {
             owner_coins_map: OwnerCoinsMap::new(),
             last_block_info: BlockInfo::genesis(),
         }
+    }
+
+    /// Load from a file.
+    pub async fn load(path: &str) -> TokioResult<Self> {
+        let bytes = tokio::fs::read(path).await?;
+        let content = String::from_utf8(bytes).unwrap();
+        let instance = serde_json::from_str(&content)?;
+        Ok(instance)
+    }
+
+    /// Dump to a file.
+    pub async fn dump(&self, path: &str) -> TokioResult<()> {
+        let content = serde_json::to_string(self).unwrap();
+        tokio::fs::write(path, content.as_bytes()).await
     }
 
     /// Get owner of the coin by number.
