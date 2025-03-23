@@ -12,6 +12,9 @@ use crate::state::State;
 pub const GENESIS_HASH: &str = 
     "E12BA98A17FD8F70608668AA32AEB3BE1F202B4BD69880A6C0CFE855B1A0706B";
 
+/// Complexity after calibration.
+pub const COMPLEXITY: usize = 20;
+
 
 /// Basic structure for block.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -357,7 +360,7 @@ mod tests {
     }
 
     #[bench]
-    fn bench_mine(bencher: &mut Bencher) {
+    fn bench_mine_10(bencher: &mut Bencher) {
         let size = 10;
 
         let mut rng = rand::rng();
@@ -379,6 +382,32 @@ mod tests {
         bencher.iter(|| {
             let _nonce = Block::mine(&mut rng, &block_hash_prev, &validator, 
                                      &transactions, 0, None);
+        });
+    }
+    
+    #[bench]
+    fn bench_mine_calibration(bencher: &mut Bencher) {
+        // The result must be ~1 s/iter
+        let complexity = 20;
+
+        let mut rng = rand::rng();
+        let schema = Schema::new();
+
+        let block_hash_prev: U256 = rng.random();
+        let validator: U256 = schema.gen_pair(&mut rng).1;
+        let coin: U256 = rng.random();
+        let addr: U256 = rng.random();
+        let key: U256 = schema.gen_key(&mut rng);
+
+        let transactions: Vec<Transaction> = vec![
+            Transaction::build(
+                &mut rng, coin.clone(), addr.clone(), &key, &schema
+            ),
+        ];
+
+        bencher.iter(|| {
+            let _nonce = Block::mine(&mut rng, &block_hash_prev, &validator, 
+                                     &transactions, complexity, None);
         });
     }
 }
