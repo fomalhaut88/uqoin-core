@@ -13,7 +13,7 @@ pub const GENESIS_HASH: &str =
     "E12BA98A17FD8F70608668AA32AEB3BE1F202B4BD69880A6C0CFE855B1A0706B";
 
 /// Complexity after calibration.
-pub const COMPLEXITY: usize = 20;
+pub const COMPLEXITY: usize = 24;
 
 
 /// Basic structure for block.
@@ -394,8 +394,8 @@ mod tests {
     //     `cargo bench block::tests::bench_mine_calibration`
     // #[bench]
     // fn bench_mine_calibration(bencher: &mut Bencher) {
-    //     // The result must be ~1 s/iter
-    //     let complexity = 20;
+    //     // The result is ~4 s/iter
+    //     let complexity = 24;
 
     //     let mut rng = rand::rng();
     //     let schema = Schema::new();
