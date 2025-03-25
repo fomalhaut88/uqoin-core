@@ -2,8 +2,9 @@ use rand::Rng;
 use serde::{Serialize, Deserialize};
 
 use crate::utils::*;
+use crate::errors::{UqoinError, UqoinErrorKind};
 use crate::schema::Schema;
-use crate::coin::{coin_is_valid, coin_order};
+use crate::coin::{coin_validate, coin_order};
 use crate::state::State;
 
 
@@ -90,18 +91,31 @@ impl Transaction {
     /// 1. Sender is the owner of each coin, if it met before.
     /// 2. The coin number corresponds the previous block hash and the sender
     /// if the coin is new (just mined).
-    pub fn validate_coin(&self, schema: &Schema, state: &State) -> bool {
+    pub fn validate_coin(&self, schema: &Schema, 
+                         state: &State) -> UqoinResult<()> {
         // Get sender
         let sender = &self.get_sender(schema);
 
         // Try to find the coin in coin-owner map
         if let Some(owner) = state.get_owner(&self.coin) {
             // Check ownership
-            (owner == sender) && (owner != &self.addr)
+            if owner != sender {
+                return Err(UqoinError::new(
+                    UqoinErrorKind::TransactionInvalidSender, self.coin.to_hex()
+                ));
+            }
+            if owner == &self.addr {
+                return Err(UqoinError::new(
+                    UqoinErrorKind::TransactionSelfTransfer, self.coin.to_hex()
+                ));
+            }
         } else {
             // Check mining
-            coin_is_valid(&self.coin, &state.get_last_block_info().hash, sender)
+            coin_validate(&self.coin, &state.get_last_block_info().hash, 
+                          sender)?;
         }
+
+        Ok(())
     }
 
     /// Calculate transaction message as hash of the `coin` and `addr`.

@@ -3,6 +3,7 @@ use sha3::{Sha3_256, Digest};
 use serde::{Serialize, Deserialize};
 
 use crate::utils::*;
+use crate::errors::{UqoinError, UqoinErrorKind};
 use crate::transaction::{Type, Transaction, group_transactions};
 use crate::schema::Schema;
 use crate::state::State;
@@ -52,8 +53,8 @@ impl Block {
         }
 
         // Validate transactions
-        if !Self::validate_transactions(transactions, &self.validator, schema, 
-                                        state) {
+        if Self::validate_transactions(transactions, &self.validator, schema, 
+                                       state).is_err() {
             return false;
         }
 
@@ -85,7 +86,7 @@ impl Block {
                  state: &State) -> Option<Self> {
         // Validate transactions
         if Self::validate_transactions(transactions, &validator, schema, 
-                                       state) {
+                                       state).is_ok() {
             // Calculate the message
             let msg = Self::calc_msg(&hash_prev, &validator, transactions);
 
@@ -108,20 +109,18 @@ impl Block {
     /// 1. All coins are unique.
     /// 2. All transactions are valid (see `Transaction::validate_coins()`).
     pub fn validate_coins(transactions: &[Transaction], schema: &Schema, 
-                          state: &State) -> bool {
+                          state: &State) -> UqoinResult<()> {
         // Repeated coins are not valid
         if !check_unique(transactions.iter().map(|tr| &tr.coin)) {
-            return false;
+            return Err(UqoinErrorKind::CoinNotUnique.into());
         }
 
         // Validate coin in each transaction
         for transaction in transactions.iter() {
-            if !transaction.validate_coin(schema, state) {
-                return false;
-            }
+            transaction.validate_coin(schema, state)?;
         }
 
-        true
+        Ok(())
     }
 
     /// Validate transactions. The checks:
@@ -133,11 +132,9 @@ impl Block {
     /// they cannot be created invalid due to inner validation.
     pub fn validate_transactions(transactions: &[Transaction], 
                                  validator: &U256, schema: &Schema, 
-                                 state: &State) -> bool {
+                                 state: &State) -> UqoinResult<()> {
         // Check coins
-        if !Self::validate_coins(transactions, schema, state) {
-            return false;
-        }
+        Self::validate_coins(transactions, schema, state)?;
 
         // Set a countdown for groupped transactions
         let mut countdown = transactions.len();
@@ -148,7 +145,7 @@ impl Block {
             // Check validator
             if let Some(ext_sender) = ext.get_sender(schema) {
                 if &ext_sender != validator {
-                    return false;
+                    return Err(UqoinErrorKind::BlockValidatorMismatch.into());
                 }
             }
 
@@ -156,7 +153,7 @@ impl Block {
             if ext.get_type() != Type::Transfer {
                 if group.get_order(state, schema) != 
                    ext.get_order(state, schema) {
-                    return false;
+                    return Err(UqoinErrorKind::BlockOrderMismatch.into());
                 }
             }
 
@@ -165,7 +162,11 @@ impl Block {
         }
 
         // Return `true` if all transactions have been groupped else `false`
-        countdown == 0
+        if countdown > 0 {
+            return Err(UqoinErrorKind::BlockBroken.into());
+        }
+
+        Ok(())
     }
 
     /// Validate hash for the certain complexity.

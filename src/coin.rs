@@ -1,13 +1,28 @@
 use rand::Rng;
 
 use crate::utils::*;
+use crate::errors::{UqoinError, UqoinErrorKind};
 
 
 /// Check if the coin is valid. This means first 128 bit must be the same
 /// as block_hash XOR miner.
+#[deprecated(since="0.1.0", 
+             note="please use `coin_validate(...).is_ok()` instead")]
 pub fn coin_is_valid(coin: &U256, block_hash_prev: &U256, 
                      miner: &U256) -> bool {
     coin.as_array()[2..4] == coin_tail(block_hash_prev, miner)
+}
+
+
+/// Check if the coin is valid. This means first 128 bit must be the same
+/// as block_hash XOR miner.
+pub fn coin_validate(coin: &U256, block_hash_prev: &U256, 
+                     miner: &U256) -> UqoinResult<()> {
+    if coin.as_array()[2..4] == coin_tail(block_hash_prev, miner) {
+        Ok(())
+    } else {
+        Err(UqoinError::new(UqoinErrorKind::CoinInvalid, coin.to_hex()))
+    }
 }
 
 
@@ -103,7 +118,7 @@ mod tests {
             "00000A20A6620E0D48C7BDD76BF8E92D0CD26AFC4AB1A39A8A5DF8D7D7103F88"
         );
 
-        assert_eq!(coin_is_valid(&coin, &block_hash_prev, &miner), true);
+        assert!(coin_validate(&coin, &block_hash_prev, &miner).is_ok());
 
         let order = coin_order(&coin, &block_hash_prev, &miner);
 
@@ -136,7 +151,7 @@ mod tests {
             .take(3).collect::<Vec<U256>>();
 
         assert!(coins.iter().all(
-            |coin| coin_is_valid(&coin, &block_hash_prev, &miner)
+            |coin| coin_validate(&coin, &block_hash_prev, &miner).is_ok()
         ));
         assert!(coins.iter().all(
             |coin| coin_order(&coin, &block_hash_prev, &miner) >= 10

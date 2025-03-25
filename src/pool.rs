@@ -28,7 +28,7 @@ impl Pool {
     /// Add group to waiting transactions.
     pub fn add_group(&mut self, group: &Group, schema: &Schema, 
                      state: &State) -> bool {
-        if !Block::validate_coins(group.transactions(), schema, state) {
+        if Block::validate_coins(group.transactions(), schema, state).is_err() {
             return false;
         }
         self.groups.push(group.clone());
@@ -153,7 +153,7 @@ impl Pool {
     pub fn update_groups(&mut self, schema: &Schema, state: &State) {
         // Remove invalid groups in the current state
         self.groups = self.groups.iter().filter(
-            |gr| Block::validate_coins(gr.transactions(), schema, state)
+            |gr| Block::validate_coins(gr.transactions(), schema, state).is_ok()
         ).cloned().collect();
     }
 

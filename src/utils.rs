@@ -5,6 +5,8 @@ use std::collections::HashSet;
 use sha3::{Sha3_256, Digest};
 use finitelib::prelude::*;
 
+use crate::errors::UqoinError;
+
 
 /// 256-bit unsigned integer datatype
 pub type U256 = bigi_of_bits!(256);
@@ -14,6 +16,9 @@ pub type R256 = bigi_ring_for_bigi!(U256);
 
 /// Alias for ECDSA signature that is a pair of U256.
 pub type Signature = (U256, U256);
+
+/// Result to manage Uqoin errors.
+pub type UqoinResult<T> = Result<T, UqoinError>;
 
 
 /// Get SHA3 hash of a slice of U256.
