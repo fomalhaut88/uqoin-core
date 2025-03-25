@@ -2,8 +2,8 @@ use rand::Rng;
 use sha3::{Sha3_256, Digest};
 use serde::{Serialize, Deserialize};
 
+use crate::validate;
 use crate::utils::*;
-use crate::errors::{UqoinError, UqoinErrorKind};
 use crate::transaction::{Type, Transaction, group_transactions};
 use crate::schema::Schema;
 use crate::state::State;
@@ -41,22 +41,18 @@ impl Block {
     /// one.
     pub fn validate(&self, transactions: &[Transaction], 
                     block_info_prev: &BlockInfo, complexity: usize, 
-                    schema: &Schema, state: &State) -> bool {
+                    schema: &Schema, state: &State) -> UqoinResult<()> {
         // Check block hash
-        if block_info_prev.hash != self.hash_prev {
-            return false;
-        }
+        validate!(block_info_prev.hash == self.hash_prev, 
+                  BlockPreviousHashMismatch)?;
 
         // Check block offset
-        if block_info_prev.offset != self.offset {
-            return false;        
-        }
+        validate!(block_info_prev.offset == self.offset, 
+                  BlockOffsetMismatch)?;
 
         // Validate transactions
-        if Self::validate_transactions(transactions, &self.validator, schema, 
-                                       state).is_err() {
-            return false;
-        }
+        Self::validate_transactions(transactions, &self.validator, schema, 
+                                    state)?;
 
         // Calculate the message
         let msg = Self::calc_msg(&self.hash_prev, &self.validator, 
@@ -66,21 +62,18 @@ impl Block {
         let hash = Self::calc_hash(&msg, &self.nonce);
 
         // Check hash
-        if hash != self.hash {
-            return false;
-        }
+        validate!(hash == self.hash, BlockInvalidHash)?;
 
         // Validate hash
-        if !Self::validate_hash(&self.hash, transactions.len(), complexity) {
-            return false;
-        }
+        Self::validate_hash_complexity(&self.hash, transactions.len(), 
+                                       complexity)?;
 
-        // Return true
-        true
+        // Return
+        Ok(())
     }
 
     /// Build a new block for the transactions. It validates the final hash.
-    pub fn build(offset: u64, hash_prev: U256, validator: U256, 
+    pub fn build(block_info_prev: &BlockInfo, validator: U256, 
                  transactions: &[Transaction], nonce: U256,
                  complexity: usize, schema: &Schema,
                  state: &State) -> Option<Self> {
@@ -88,14 +81,17 @@ impl Block {
         if Self::validate_transactions(transactions, &validator, schema, 
                                        state).is_ok() {
             // Calculate the message
-            let msg = Self::calc_msg(&hash_prev, &validator, transactions);
+            let msg = Self::calc_msg(&block_info_prev.hash, &validator, transactions);
 
             // Calculate the hash
             let hash = Self::calc_hash(&msg, &nonce);
 
             // Validate hash
-            if Self::validate_hash(&hash, transactions.len(), complexity) {
-                Some(Self::new(offset, transactions.len() as u64, hash_prev,
+            if Self::validate_hash_complexity(&hash, transactions.len(), 
+                                              complexity).is_ok() {
+                Some(Self::new(block_info_prev.offset, 
+                               transactions.len() as u64, 
+                               block_info_prev.hash.clone(),
                                validator, nonce, hash))
             } else {
                 None
@@ -111,9 +107,8 @@ impl Block {
     pub fn validate_coins(transactions: &[Transaction], schema: &Schema, 
                           state: &State) -> UqoinResult<()> {
         // Repeated coins are not valid
-        if !check_unique(transactions.iter().map(|tr| &tr.coin)) {
-            return Err(UqoinErrorKind::CoinNotUnique.into());
-        }
+        validate!(check_unique(transactions.iter().map(|tr| &tr.coin)), 
+                  CoinNotUnique)?;
 
         // Validate coin in each transaction
         for transaction in transactions.iter() {
@@ -144,35 +139,31 @@ impl Block {
                                                state) {
             // Check validator
             if let Some(ext_sender) = ext.get_sender(schema) {
-                if &ext_sender != validator {
-                    return Err(UqoinErrorKind::BlockValidatorMismatch.into());
-                }
+                validate!(&ext_sender == validator, BlockValidatorMismatch)?;
             }
 
             // Check value
             if ext.get_type() != Type::Transfer {
-                if group.get_order(state, schema) != 
-                   ext.get_order(state, schema) {
-                    return Err(UqoinErrorKind::BlockOrderMismatch.into());
-                }
+                validate!(group.get_order(state, schema) 
+                          == ext.get_order(state, schema), BlockOrderMismatch)?;
             }
 
             // Decrement the countdown
             countdown -= group.len() + ext.len();
         }
 
-        // Return `true` if all transactions have been groupped else `false`
-        if countdown > 0 {
-            return Err(UqoinErrorKind::BlockBroken.into());
-        }
+        // Validate that all transactions have been groupped
+        validate!(countdown == 0, BlockBroken)?;
 
         Ok(())
     }
 
     /// Validate hash for the certain complexity.
-    pub fn validate_hash(hash: &U256, size: usize, complexity: usize) -> bool {
+    pub fn validate_hash_complexity(hash: &U256, size: usize, 
+                                    complexity: usize) -> UqoinResult<()> {
         let limit_hash = Self::calc_limit_hash(size, complexity);
-        Self::is_hash_valid(&hash.to_bytes(), &limit_hash)
+        validate!(Self::is_hash_valid(&hash.to_bytes(), &limit_hash), 
+                  BlockInvalidHashComplexity)
     }
 
     /// calculate block message as hash of the important content.

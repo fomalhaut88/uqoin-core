@@ -1,7 +1,7 @@
 use rand::Rng;
 
+use crate::validate;
 use crate::utils::*;
-use crate::errors::{UqoinError, UqoinErrorKind};
 
 
 /// Check if the coin is valid. This means first 128 bit must be the same
@@ -18,11 +18,8 @@ pub fn coin_is_valid(coin: &U256, block_hash_prev: &U256,
 /// as block_hash XOR miner.
 pub fn coin_validate(coin: &U256, block_hash_prev: &U256, 
                      miner: &U256) -> UqoinResult<()> {
-    if coin.as_array()[2..4] == coin_tail(block_hash_prev, miner) {
-        Ok(())
-    } else {
-        Err(UqoinError::new(UqoinErrorKind::CoinInvalid, coin.to_hex()))
-    }
+    validate!(coin.as_array()[2..4] == coin_tail(block_hash_prev, miner), 
+              CoinInvalid)
 }
 
 

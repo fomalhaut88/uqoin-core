@@ -1,8 +1,8 @@
 use rand::Rng;
 use serde::{Serialize, Deserialize};
 
+use crate::validate;
 use crate::utils::*;
-use crate::errors::{UqoinError, UqoinErrorKind};
 use crate::schema::Schema;
 use crate::coin::{coin_validate, coin_order};
 use crate::state::State;
@@ -99,16 +99,8 @@ impl Transaction {
         // Try to find the coin in coin-owner map
         if let Some(owner) = state.get_owner(&self.coin) {
             // Check ownership
-            if owner != sender {
-                return Err(UqoinError::new(
-                    UqoinErrorKind::TransactionInvalidSender, self.coin.to_hex()
-                ));
-            }
-            if owner == &self.addr {
-                return Err(UqoinError::new(
-                    UqoinErrorKind::TransactionSelfTransfer, self.coin.to_hex()
-                ));
-            }
+            validate!(owner == sender, TransactionInvalidSender)?;
+            validate!(owner != &self.addr, TransactionSelfTransfer)?;
         } else {
             // Check mining
             coin_validate(&self.coin, &state.get_last_block_info().hash, 
@@ -139,7 +131,7 @@ impl Group {
     /// vector is not valid, `None` will be returned.
     pub fn new(transactions: Vec<Transaction>, schema: &Schema, 
                state: &State) -> Option<Self> {
-        if Self::validate_transactions(&transactions, schema, state) {
+        if Self::validate_transactions(&transactions, schema, state).is_ok() {
             Some(Self(transactions))
         } else {
             None
@@ -237,32 +229,32 @@ impl Group {
 
     /// Validate transactions for the group creation.
     pub fn validate_transactions(transactions: &[Transaction], schema: &Schema, 
-                                 state: &State) -> bool {
-        // False if no transactions in the slice
-        if transactions.is_empty() {
-            return false;
-        }
+                                 state: &State) -> UqoinResult<()> {
+        // Error if no transactions in the slice
+        validate!(!transactions.is_empty(), TransactionEmpty)?;
 
         // Check unique coins
-        if !check_unique(transactions.iter().map(|tr| &tr.coin)) {
-            return false;
-        }
+        validate!(check_unique(transactions.iter().map(|tr| &tr.coin)), 
+                  CoinNotUnique)?;
 
         // Check same sender
-        if !check_same(transactions.iter().map(|tr| tr.get_sender(schema))) {
-            return false;
-        }
+        validate!(check_same(transactions.iter()
+                                         .map(|tr| tr.get_sender(schema))), 
+                  TransactionInvalidSender)?;
 
         // Check the first type
         match transactions[0].get_type() {
-            // False if the first transaction is fee
-            Type::Fee => false,
+            // Error if the first transaction is fee
+            Type::Fee => validate!(false, TransactionBrokenGroup)?,
 
             // Check the rest fees if split
-            Type::Split => (transactions.len() == 1) || (
-                (transactions.len() == 2) && 
-                (transactions[1].get_type() == Type::Fee)
-            ),
+            Type::Split => {
+                if transactions.len() > 1 {
+                    validate!(transactions.len() == 2, TransactionBrokenGroup)?;
+                    validate!(transactions[1].get_type() == Type::Fee, 
+                              TransactionBrokenGroup)?;
+                }
+            },
 
             // Check fees, other types and values for the rest if merge
             Type::Merge => {
@@ -271,9 +263,13 @@ impl Group {
                     (transactions[3].get_type() == Type::Fee)
                 );
 
+                validate!(fee_check, TransactionBrokenGroup)?;
+
                 let type_check = 
                     (transactions[1].get_type() == Type::Merge) && 
                     (transactions[2].get_type() == Type::Merge);
+
+                validate!(type_check, TransactionBrokenGroup)?;
 
                 let order0 = transactions[0].get_order(state, schema);
                 let order1 = transactions[1].get_order(state, schema);
@@ -282,15 +278,20 @@ impl Group {
                 let order_check = (order1 + 1 == order0) && 
                                   (order2 + 1 == order0);
 
-                fee_check && type_check && order_check
+                validate!(order_check, TransactionBrokenGroup)?;
             },
 
             // Check the rest fees if transfer
-            Type::Transfer => (transactions.len() == 1) || (
-                (transactions.len() == 2) && 
-                (transactions[1].get_type() == Type::Fee)
-            ),
+            Type::Transfer => {
+                if transactions.len() > 1 {
+                    validate!(transactions.len() == 2, TransactionBrokenGroup)?;
+                    validate!(transactions[1].get_type() == Type::Fee, 
+                              TransactionBrokenGroup)?;
+                }
+            },
         }
+
+        Ok(())
     }
 }
 
@@ -310,7 +311,7 @@ impl Ext {
     /// Create a new extension from transactions.
     pub fn new(transactions: Vec<Transaction>, schema: &Schema, 
                state: &State) -> Option<Self> {
-        if Self::validate_transactions(&transactions, schema, state) {
+        if Self::validate_transactions(&transactions, schema, state).is_ok() {
             Some(Self(transactions))
         } else {
             None
@@ -358,24 +359,24 @@ impl Ext {
 
     /// Validate transactions for the extension creation.
     pub fn validate_transactions(transactions: &[Transaction], schema: &Schema, 
-                                 state: &State) -> bool {
+                                 state: &State) -> UqoinResult<()> {
         // Check unique coins
-        if !check_unique(transactions.iter().map(|tr| &tr.coin)) {
-            return false;
-        }
+        validate!(check_unique(transactions.iter().map(|tr| &tr.coin)), 
+                  CoinNotUnique)?;
 
         // Check same sender
-        if !check_same(transactions.iter().map(|tr| tr.get_sender(schema))) {
-            return false;
-        }
+        validate!(check_same(transactions.iter()
+                                         .map(|tr| tr.get_sender(schema))), 
+                  TransactionInvalidSender)?;
 
         // Check the size
         match transactions.len() {
-            // `true` for the transfer type
-            0 => true,
+            // Ok for the transfer type
+            0 => {},
 
             // Check the type for the merge type
-            1 => transactions[0].get_type() == Type::Transfer,
+            1 => validate!(transactions[0].get_type() == Type::Transfer, 
+                           TransactionBrokenExt)?,
 
             // Complex check for the split check
             3 => {
@@ -387,15 +388,21 @@ impl Ext {
                 let type_check = transactions.iter()
                     .all(|tr| tr.get_type() == Type::Transfer);
 
+                validate!(type_check, TransactionBrokenExt)?;
+
                 // Check same sender
                 let sender_check = 
                     (transactions[1].get_sender(schema) == sender) && 
                     (transactions[2].get_sender(schema) == sender);
 
+                validate!(sender_check, TransactionBrokenExt)?;
+
                 // Check same addr
                 let addr_check = 
                     (&transactions[1].addr == addr) && 
                     (&transactions[2].addr == addr);
+
+                validate!(addr_check, TransactionBrokenExt)?;
 
                 // Check order
                 let order0 = transactions[0].get_order(state, schema);
@@ -405,12 +412,14 @@ impl Ext {
                 let order_check = (order1 + 1 == order0) && 
                                   (order2 + 1 == order0);
 
-                type_check && sender_check && addr_check && order_check
+                validate!(order_check, TransactionBrokenExt)?;
             },
 
             // Panic if the wrong size
             _ => panic!("Invalid size of extension."),
         }
+
+        Ok(())
     }
 }
 

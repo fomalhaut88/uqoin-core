@@ -3,7 +3,7 @@
 extern crate test;
 
 pub mod utils;
-pub mod errors;
+pub mod error;
 pub mod edwards;
 pub mod schema;
 pub mod coin;

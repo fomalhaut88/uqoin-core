@@ -28,11 +28,12 @@ impl Pool {
     /// Add group to waiting transactions.
     pub fn add_group(&mut self, group: &Group, schema: &Schema, 
                      state: &State) -> bool {
-        if Block::validate_coins(group.transactions(), schema, state).is_err() {
-            return false;
+        if Block::validate_coins(group.transactions(), schema, state).is_ok() {
+            self.groups.push(group.clone());
+            true
+        } else {
+            false
         }
-        self.groups.push(group.clone());
-        true
     }
 
     /// Get ready transactions for next block.
