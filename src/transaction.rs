@@ -37,8 +37,8 @@ impl Transaction {
     /// Build a transaction of the `coin` from `key` to `addr`. In case of
     /// fee, split and merge use 0, 1 and 2 for `addr` respectively.
     pub fn build<R: Rng>(rng: &mut R, coin: U256, addr: U256, key: &U256, 
-                         schema: &Schema) -> Self {
-        let hash = Self::calc_msg(&coin, &addr);
+                         counter: u64, schema: &Schema) -> Self {
+        let hash = Self::calc_msg(&coin, &addr, counter);
         let (sign_r, sign_s) = schema.build_signature(rng, &hash, key);
         Self::new(coin, addr, sign_r, sign_s)
     }
@@ -57,8 +57,8 @@ impl Transaction {
     }
 
     /// Get transaction message as hash of coin and address.
-    pub fn get_msg(&self) -> U256 {
-        Self::calc_msg(&self.coin, &self.addr)
+    pub fn get_msg(&self, counter: u64) -> U256 {
+        Self::calc_msg(&self.coin, &self.addr, counter)
     }
 
     /// Get transaction hash.
@@ -69,9 +69,10 @@ impl Transaction {
     }
 
     /// Get transaction sender.
-    pub fn get_sender(&self, schema: &Schema) -> U256 {
+    pub fn get_sender(&self, state: &State, schema: &Schema) -> U256 {
+        let counter = state.get_coin_counter(&self.coin);
         schema.extract_public(
-            &self.get_msg(), 
+            &self.get_msg(counter), 
             &(self.sign_r.clone(), self.sign_s.clone())
         )
     }
@@ -81,9 +82,8 @@ impl Transaction {
         if let Some(coin_info) = state.get_coin_info(&self.coin) {
             coin_info.order
         } else {
-            let block_hash_prev = &state.get_last_block_info().hash;
-            let miner = self.get_sender(schema);
-            coin_order(&self.coin, block_hash_prev, &miner)
+            let miner = self.get_sender(state, schema);
+            coin_order(&self.coin, &miner)
         }
     }
 
@@ -94,25 +94,23 @@ impl Transaction {
     pub fn validate_coin(&self, schema: &Schema, 
                          state: &State) -> UqoinResult<()> {
         // Get sender
-        let sender = &self.get_sender(schema);
+        let sender = &self.get_sender(state, schema);
 
         // Try to find the coin in coin-owner map
         if let Some(owner) = state.get_owner(&self.coin) {
             // Check ownership
             validate!(owner == sender, TransactionInvalidSender)?;
-            validate!(owner != &self.addr, TransactionSelfTransfer)?;
         } else {
             // Check mining
-            coin_validate(&self.coin, &state.get_last_block_info().hash, 
-                          sender)?;
+            coin_validate(&self.coin, sender)?;
         }
 
         Ok(())
     }
 
     /// Calculate transaction message as hash of the `coin` and `addr`.
-    pub fn calc_msg(coin: &U256, addr: &U256) -> U256 {
-        hash_of_u256([coin, addr].into_iter())
+    pub fn calc_msg(coin: &U256, addr: &U256, counter: u64) -> U256 {
+        hash_of_u256([coin, addr, &U256::from(counter)].into_iter())
     }
 }
 
@@ -182,8 +180,8 @@ impl Group {
     }
 
     /// Get sender of the group.
-    pub fn get_sender(&self, schema: &Schema) -> U256 {
-        self.0[0].get_sender(schema)
+    pub fn get_sender(&self, state: &State, schema: &Schema) -> U256 {
+        self.0[0].get_sender(state, schema)
     }
 
     /// Get fee transaction.
@@ -239,7 +237,7 @@ impl Group {
 
         // Check same sender
         validate!(check_same(transactions.iter()
-                                         .map(|tr| tr.get_sender(schema))), 
+                        .map(|tr| tr.get_sender(state, schema))), 
                   TransactionInvalidSender)?;
 
         // Check the first type
@@ -334,11 +332,11 @@ impl Ext {
     }
 
     /// Get sender of the extension.
-    pub fn get_sender(&self, schema: &Schema) -> Option<U256> {
+    pub fn get_sender(&self, state: &State, schema: &Schema) -> Option<U256> {
         if self.0.is_empty() {
             None
         } else {
-            Some(self.0[0].get_sender(schema))
+            Some(self.0[0].get_sender(state, schema))
         }
     }
 
@@ -366,7 +364,7 @@ impl Ext {
 
         // Check same sender
         validate!(check_same(transactions.iter()
-                                         .map(|tr| tr.get_sender(schema))), 
+                        .map(|tr| tr.get_sender(state, schema))), 
                   TransactionInvalidSender)?;
 
         // Check the size
@@ -381,7 +379,7 @@ impl Ext {
             // Complex check for the split check
             3 => {
                 // Get the first sender and addr
-                let sender = transactions[0].get_sender(schema);
+                let sender = transactions[0].get_sender(state, schema);
                 let addr = &transactions[0].addr;
 
                 // Check transfer type
@@ -392,8 +390,8 @@ impl Ext {
 
                 // Check same sender
                 let sender_check = 
-                    (transactions[1].get_sender(schema) == sender) && 
-                    (transactions[2].get_sender(schema) == sender);
+                    (transactions[1].get_sender(state, schema) == sender) && 
+                    (transactions[2].get_sender(state, schema) == sender);
 
                 validate!(sender_check, TransactionBrokenExt)?;
 

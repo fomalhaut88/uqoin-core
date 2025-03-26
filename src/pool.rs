@@ -63,7 +63,7 @@ impl Pool {
         let groups_max = groups_max.unwrap_or(1000000000);
         for group in self.groups.iter().take(groups_max) {
             // Get sender and order
-            let sender = group.get_sender(schema);
+            let sender = group.get_sender(state, schema);
             let order = group.get_order(state, schema);
 
             // Skip if the group contains any seen coin
@@ -84,17 +84,19 @@ impl Pool {
                     let coin = Self::get_validator_coin(
                         ord, &mut validator_resource, &coin_set
                     )?;
+                    let counter = state.get_coin_counter(&coin);
                     coin_set.insert(coin.clone());
                     Some(Transaction::build(rng, coin, sender.clone(), 
-                                            validator_key, schema))
+                                            validator_key, counter, schema))
                 }).collect(),
                 Type::Split => [order-1, order-2, order-2].iter().map(|ord| {
                     let coin = Self::get_validator_coin(
                         ord, &mut validator_resource, &coin_set
                     )?;
+                    let counter = state.get_coin_counter(&coin);
                     coin_set.insert(coin.clone());
                     Some(Transaction::build(rng, coin, sender.clone(), 
-                                            validator_key, schema))
+                                            validator_key, counter, schema))
                 }).collect(),
                 _ => panic!("Invalid group type"),
             };

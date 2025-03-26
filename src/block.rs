@@ -81,7 +81,8 @@ impl Block {
         if Self::validate_transactions(transactions, &validator, schema, 
                                        state).is_ok() {
             // Calculate the message
-            let msg = Self::calc_msg(&block_info_prev.hash, &validator, transactions);
+            let msg = Self::calc_msg(&block_info_prev.hash, &validator, 
+                                     transactions);
 
             // Calculate the hash
             let hash = Self::calc_hash(&msg, &nonce);
@@ -138,7 +139,7 @@ impl Block {
         for (group, ext) in group_transactions(transactions.to_vec(), schema, 
                                                state) {
             // Check validator
-            if let Some(ext_sender) = ext.get_sender(schema) {
+            if let Some(ext_sender) = ext.get_sender(state, schema) {
                 validate!(&ext_sender == validator, BlockValidatorMismatch)?;
             }
 
@@ -371,7 +372,7 @@ mod tests {
 
         let transactions: Vec<Transaction> = vec![
             Transaction::build(
-                &mut rng, coin.clone(), addr.clone(), &key, &schema
+                &mut rng, coin.clone(), addr.clone(), &key, 0, &schema
             );
             size
         ];
@@ -400,7 +401,7 @@ mod tests {
 
     //     let transactions: Vec<Transaction> = vec![
     //         Transaction::build(
-    //             &mut rng, coin.clone(), addr.clone(), &key, &schema
+    //             &mut rng, coin.clone(), addr.clone(), &key, 0, &schema
     //         ),
     //     ];
 

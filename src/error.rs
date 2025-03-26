@@ -5,7 +5,6 @@ pub enum ErrorKind {
     CoinNotUnique,
     CoinTooCheap,
     TransactionInvalidSender,
-    TransactionSelfTransfer,
     TransactionEmpty,
     TransactionBrokenGroup,
     TransactionBrokenExt,

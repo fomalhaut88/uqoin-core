@@ -10,24 +10,21 @@ use crate::block::{Block, BlockInfo};
 use crate::transaction::{Transaction, Type};
 
 
-/// Information about coin.
+/// State information about coin.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoinInfo {
-    /// Order of the coin (value is 2^order)
+    /// Current owner.
+    pub owner: U256,
+
+    /// Order (it does not change).
     pub order: u64,
 
-    /// Transaction number index where the coin was mined.
-    pub tix: u64,
-
-    /// Block number where the coin was miner.
-    pub bix: u64,
+    /// Counter of transfers.
+    pub counter: u64,
 }
 
 
-/// Map coin-owner
-pub type CoinOwnerMap = HashMap<U256, U256>;
-
-/// Map coin-info
+/// Map coin-state
 pub type CoinInfoMap = HashMap<U256, CoinInfo>;
 
 /// Map order-coins
@@ -41,7 +38,6 @@ pub type OwnerCoinsMap = HashMap<U256, OrderCoinsMap>;
 /// information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct State {
-    coin_owner_map: CoinOwnerMap,
     coin_info_map: CoinInfoMap,
     owner_coins_map: OwnerCoinsMap,
     last_block_info: BlockInfo,
@@ -52,7 +48,6 @@ impl State {
     /// Create initial state.
     pub fn new() -> Self {
         Self {
-            coin_owner_map: CoinOwnerMap::new(),
             coin_info_map: CoinInfoMap::new(),
             owner_coins_map: OwnerCoinsMap::new(),
             last_block_info: BlockInfo::genesis(),
@@ -75,12 +70,17 @@ impl State {
 
     /// Get owner of the coin by number.
     pub fn get_owner(&self, coin: &U256) -> Option<&U256> {
-        self.coin_owner_map.get(coin)
+        self.coin_info_map.get(coin).map(|cs| &cs.owner)
     }
 
-    /// Get coin info by number.
+    /// Get coin state by number.
     pub fn get_coin_info(&self, coin: &U256) -> Option<&CoinInfo> {
         self.coin_info_map.get(coin)
+    }
+
+    /// Get coin state by number.
+    pub fn get_coin_counter(&self, coin: &U256) -> u64 {
+        self.coin_info_map.get(coin).map(|cs| cs.counter).unwrap_or(0)
     }
 
     /// Get coins of the owner.
@@ -102,12 +102,9 @@ impl State {
         assert_eq!(block.hash_prev, self.last_block_info.hash);
 
         // Iterate transactions
-        for (ix, transaction) in transactions.iter().enumerate() {
-            // tix
-            let tix = block.offset + ix as u64 + 1;
-
+        for transaction in transactions.iter() {
             // Get sender
-            let sender = transaction.get_sender(schema);
+            let sender = transaction.get_sender(self, schema);
 
             // Get receiver
             let receiver = if transaction.get_type() == Type::Transfer {
@@ -117,10 +114,11 @@ impl State {
             };
             
             // Check the coin already exists
-            if self.coin_info_map.contains_key(&transaction.coin) {
-                // Update coin owner
-                *self.coin_owner_map.get_mut(&transaction.coin).unwrap() = 
-                    receiver.clone();
+            if let Some(coin_info) = self.coin_info_map
+                                         .get_mut(&transaction.coin) {
+                // Update coin state
+                coin_info.owner = receiver.clone();
+                coin_info.counter += 1;
 
                 // Remove coin from the sender
                 self.owner_coin_remove(&sender, &transaction.coin);
@@ -129,18 +127,16 @@ impl State {
                 self.owner_coin_add(&receiver, &transaction.coin);
             } else {
                 // Calculate coin order
-                let order = coin_order(&transaction.coin, &block.hash_prev, 
-                                       &sender);
+                let order = coin_order(&transaction.coin, &sender);
+
+                // Create new coin state
+                let coin_info = CoinInfo {
+                    owner: receiver.clone(), order, counter: 1,
+                };
 
                 // Insert into coin info map
-                self.coin_info_map.insert(
-                    transaction.coin.clone(), 
-                    CoinInfo { order, bix, tix }
-                );
-
-                // Insert into coin owner map
-                self.coin_owner_map.insert(transaction.coin.clone(), 
-                                           receiver.clone());
+                self.coin_info_map.insert(transaction.coin.clone(), 
+                                          coin_info);
 
                 // Add coin to the receiver
                 self.owner_coin_add(&receiver, &transaction.coin);
@@ -167,13 +163,16 @@ impl State {
         self.last_block_info.offset = block.offset;
         self.last_block_info.hash = block.hash_prev.clone();
 
-        // Iterate transactions
-        for (ix, transaction) in transactions.iter().enumerate() {
-            // tix
-            let tix = block.offset + ix as u64 + 1;
+        // First decrement counters in each coin so the message of the 
+        // transaction will be correct to calculate the sender
+        for transaction in transactions.iter() {
+            self.coin_info_map.get_mut(&transaction.coin).unwrap().counter -= 1;
+        }
 
+        // Iterate transactions
+        for transaction in transactions.iter() {
             // Get sender
-            let sender = transaction.get_sender(schema);
+            let sender = transaction.get_sender(self, schema);
 
             // Get receiver
             let receiver = if transaction.get_type() == Type::Transfer {
@@ -182,26 +181,26 @@ impl State {
                 &block.validator
             };
 
+            // Get coin info
+            let coin_info = self.coin_info_map.get_mut(&transaction.coin)
+                                              .unwrap();
+
             // Check the coin was mined in this block
-            if self.coin_info_map[&transaction.coin].tix == tix {
+            if coin_info.counter == 0 {
                 // Remove from owner coin map
                 self.owner_coin_remove(&receiver, &transaction.coin);
 
                 // Remove from coin owner map
-                self.coin_owner_map.remove(&transaction.coin);
-
-                // Remove from coin info map
                 self.coin_info_map.remove(&transaction.coin);
             } else {
+                // Update coin owner
+                coin_info.owner = sender.clone();
+
                 // Remove coin from the receiver
                 self.owner_coin_remove(&receiver, &transaction.coin);
 
                 // Add coin to the sender
                 self.owner_coin_add(&sender, &transaction.coin);
-
-                // Update coin owner
-                *self.coin_owner_map.get_mut(&transaction.coin).unwrap() = 
-                    sender.clone();
             }
         }
     }
@@ -231,8 +230,8 @@ impl State {
         let order = self.coin_info_map[coin].order;
 
         // Remove the coin
-        self.owner_coins_map.get_mut(owner).unwrap()
-            .get_mut(&order).unwrap().remove(coin);
+        let coins_map = self.owner_coins_map.get_mut(owner).unwrap();
+        coins_map.get_mut(&order).unwrap().remove(coin);
 
         // Remove empty set
         if self.owner_coins_map[owner][&order].is_empty() {

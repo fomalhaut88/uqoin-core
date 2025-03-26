@@ -6,26 +6,14 @@ use crate::utils::*;
 
 /// Check if the coin is valid. This means first 128 bit must be the same
 /// as block_hash XOR miner.
-#[deprecated(since="0.1.0", 
-             note="please use `coin_validate(...).is_ok()` instead")]
-pub fn coin_is_valid(coin: &U256, block_hash_prev: &U256, 
-                     miner: &U256) -> bool {
-    coin.as_array()[2..4] == coin_tail(block_hash_prev, miner)
-}
-
-
-/// Check if the coin is valid. This means first 128 bit must be the same
-/// as block_hash XOR miner.
-pub fn coin_validate(coin: &U256, block_hash_prev: &U256, 
-                     miner: &U256) -> UqoinResult<()> {
-    validate!(coin.as_array()[2..4] == coin_tail(block_hash_prev, miner), 
-              CoinInvalid)
+pub fn coin_validate(coin: &U256, miner: &U256) -> UqoinResult<()> {
+    validate!(coin.as_array()[2..4] == miner.as_array()[2..4], CoinInvalid)
 }
 
 
 /// Get coin order.
-pub fn coin_order(coin: &U256, block_hash_prev: &U256, miner: &U256) -> u64 {
-    let hash = hash_of_u256([coin, block_hash_prev, miner].into_iter());
+pub fn coin_order(coin: &U256, miner: &U256) -> u64 {
+    let hash = hash_of_u256([coin, miner].into_iter());
     256 - hash.bit_len() as u64
 }
 
@@ -53,8 +41,7 @@ pub fn coin_value(order: u64) -> U256 {
 
 
 /// Generate random coin.
-pub fn coin_random<R: Rng>(rng: &mut R, block_hash_prev: &U256, 
-                           miner: &U256) -> U256 {
+pub fn coin_random<R: Rng>(rng: &mut R, miner: &U256) -> U256 {
     // Empty coin
     let mut coin = U256::from(0);
 
@@ -64,31 +51,20 @@ pub fn coin_random<R: Rng>(rng: &mut R, block_hash_prev: &U256,
     );
 
     // Tail is XOR of miner and block_hash
-    coin.as_array_mut()[2..4].clone_from_slice(
-        &coin_tail(block_hash_prev, miner)
-    );
+    coin.as_array_mut()[2..4].clone_from_slice(&miner.as_array()[2..4]);
     
     // Return coin
     coin
 }
 
 
-/// Calculate last two u64 digits (128 bits) from `block_hash_prev` and `miner`.
-pub fn coin_tail(block_hash_prev: &U256, miner: &U256) -> [u64; 2] {
-    [
-        miner.as_array()[2] ^ block_hash_prev.as_array()[2],
-        miner.as_array()[3] ^ block_hash_prev.as_array()[3],
-    ]
-}
-
-
 /// Mine coins. The function returns an infinite iterator.
-pub fn coin_mine<R: Rng>(rng: &mut R, block_hash_prev: &U256, miner: &U256,
+pub fn coin_mine<R: Rng>(rng: &mut R, miner: &U256,
                          min_order: u64) -> impl Iterator<Item = U256> {
     std::iter::repeat(1)
-        .map(|_| coin_random(rng, block_hash_prev, miner))
+        .map(|_| coin_random(rng, miner))
         .filter(
-            move |coin| coin_order(coin, block_hash_prev, miner) >= min_order
+            move |coin| coin_order(coin, miner) >= min_order
         )
 }
 
@@ -101,27 +77,24 @@ mod tests {
     #[test]
     fn test_coin() {
         let coin = U256::from_hex(
-            "E764663DA70C4805F07F733C2A782116C7492C70EE67DD39C5DDA817816B8AB2"
-        );
-        let block_hash_prev = U256::from_hex(
-            "0000001B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
+            "E7646626CB303A9EEBAAD078ACD5632862232A27EF6426CC7D7A92251FBFEE94"
         );
         let miner = U256::from_hex(
             "E7646626CB303A9EEBAAD078ACD56328DC4BFFC745FD5063738D9E10BF513204"
         );
 
         assert_eq!(
-            hash_of_u256([&coin, &block_hash_prev, &miner].into_iter()).to_hex(), 
-            "00000A20A6620E0D48C7BDD76BF8E92D0CD26AFC4AB1A39A8A5DF8D7D7103F88"
+            hash_of_u256([&coin, &miner].into_iter()).to_hex(), 
+            "0000001462535B76AFA05824673FA8A3AEDC030B7D3BB354B1A7463191134609"
         );
 
-        assert!(coin_validate(&coin, &block_hash_prev, &miner).is_ok());
+        assert!(coin_validate(&coin, &miner).is_ok());
 
-        let order = coin_order(&coin, &block_hash_prev, &miner);
+        let order = coin_order(&coin, &miner);
 
-        assert_eq!(order, 20);
-        assert_eq!(coin_symbol(order), "C1");
-        assert_eq!(coin_value(order), &U256::from(1) << 20);
+        assert_eq!(order, 27);
+        assert_eq!(coin_symbol(order), "C128");
+        assert_eq!(coin_value(order), &U256::from(1) << 27);
     }
 
     #[test]
@@ -135,50 +108,41 @@ mod tests {
 
     #[test]
     fn test_mine() {
-        let block_hash_prev = U256::from_hex(
-            "0000001B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
-        );
         let miner = U256::from_hex(
             "E7646626CB303A9EEBAAD078ACD56328DC4BFFC745FD5063738D9E10BF513204"
         );
 
         let mut rng = rand::rng();
 
-        let coins = coin_mine(&mut rng, &block_hash_prev, &miner, 10)
+        let coins = coin_mine(&mut rng, &miner, 10)
             .take(3).collect::<Vec<U256>>();
 
         assert!(coins.iter().all(
-            |coin| coin_validate(&coin, &block_hash_prev, &miner).is_ok()
+            |coin| coin_validate(&coin, &miner).is_ok()
         ));
         assert!(coins.iter().all(
-            |coin| coin_order(&coin, &block_hash_prev, &miner) >= 10
+            |coin| coin_order(&coin, &miner) >= 10
         ));
     }
 
     #[bench]
     fn bench_gen_random(bencher: &mut Bencher) {
-        let block_hash_prev = U256::from_hex(
-            "0000001B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
-        );
         let miner = U256::from_hex(
             "E7646626CB303A9EEBAAD078ACD56328DC4BFFC745FD5063738D9E10BF513204"
         );
         let mut rng = rand::rng();
         bencher.iter(|| {
-            let _coin = coin_random(&mut rng, &block_hash_prev, &miner);
+            let _coin = coin_random(&mut rng, &miner);
         });
     }
 
     #[bench]
     fn bench_mine_10(bencher: &mut Bencher) {
-        let block_hash_prev = U256::from_hex(
-            "0000001B6C3C729B1BD5A34486AD423E2EE3EBE7DEAE316A71FEE1AFBED3D9B8"
-        );
         let miner = U256::from_hex(
             "E7646626CB303A9EEBAAD078ACD56328DC4BFFC745FD5063738D9E10BF513204"
         );
         let mut rng = rand::rng();
-        let mut it = coin_mine(&mut rng, &block_hash_prev, &miner, 10);
+        let mut it = coin_mine(&mut rng, &miner, 10);
         bencher.iter(|| {
             let _coin = it.next();
         });
