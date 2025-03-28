@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use serde::{Serialize, Deserialize};
+
+#[cfg(feature = "blockchain")]
 use tokio::io::{Result as TokioResult};
 
 use crate::utils::*;
@@ -55,6 +57,7 @@ impl State {
     }
 
     /// Load from a file.
+    #[cfg(feature = "blockchain")]
     pub async fn load(path: &str) -> TokioResult<Self> {
         let bytes = tokio::fs::read(path).await?;
         let content = String::from_utf8(bytes).unwrap();
@@ -63,6 +66,7 @@ impl State {
     }
 
     /// Dump to a file.
+    #[cfg(feature = "blockchain")]
     pub async fn dump(&self, path: &str) -> TokioResult<()> {
         let content = serde_json::to_string(self).unwrap();
         tokio::fs::write(path, content.as_bytes()).await

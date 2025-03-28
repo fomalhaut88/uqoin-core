@@ -9,7 +9,9 @@ pub mod schema;
 pub mod coin;
 pub mod transaction;
 pub mod block;
-pub mod blockchain;
 pub mod state;
 pub mod pool;
 pub mod seed;
+
+#[cfg(feature = "blockchain")]
+pub mod blockchain;
