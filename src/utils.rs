@@ -30,13 +30,13 @@ pub fn hash_of_u256<'a, I: Iterator<Item = &'a U256>>(elems: I) -> U256 {
 }
 
 
-/// Get SHA3 hash of a buffer.
-pub fn hash_of_buffer(buffer: &[u8]) -> U256 {
-    let mut hasher = Sha3_256::new();
-    hasher.update(buffer);
-    let bytes = hasher.finalize();
-    U256::from_bytes(&bytes)
-}
+// /// Get SHA3 hash of a buffer.
+// pub fn hash_of_buffer(buffer: &[u8]) -> U256 {
+//     let mut hasher = Sha3_256::new();
+//     hasher.update(buffer);
+//     let bytes = hasher.finalize();
+//     U256::from_bytes(&bytes)
+// }
 
 
 /// Cut first elements from a vector.
@@ -71,4 +71,42 @@ pub fn check_same<T: PartialEq, I: Iterator<Item = T>>(it: I) -> bool {
         }
     }
     true
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test::Bencher;
+    use rand::Rng;
+
+    #[bench]
+    fn bench_hash_of_u256_1(bencher: &mut Bencher) {
+        let mut rng = rand::rng();
+        let arr: [U256; 1] = rng.random();
+
+        bencher.iter(|| {
+            let _hash = hash_of_u256(arr.iter());
+        });
+    }
+
+    #[bench]
+    fn bench_hash_of_u256_10(bencher: &mut Bencher) {
+        let mut rng = rand::rng();
+        let arr: [U256; 10] = rng.random();
+
+        bencher.iter(|| {
+            let _hash = hash_of_u256(arr.iter());
+        });
+    }
+
+    #[bench]
+    fn bench_hash_of_u256_100(bencher: &mut Bencher) {
+        let mut rng = rand::rng();
+        let arr: [U256; 100] = rng.random();
+
+        bencher.iter(|| {
+            let _hash = hash_of_u256(arr.iter());
+        });
+    }
 }
