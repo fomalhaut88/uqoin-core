@@ -73,35 +73,33 @@ impl Block {
     /// Build a new block for the transactions. It validates the final hash.
     pub fn build(block_info_prev: &BlockInfo, validator: U256, 
                  transactions: &[Transaction], nonce: U256,
-                 complexity: usize, state: &State, senders: &[U256]) -> Option<Self> {
+                 complexity: usize, state: &State, 
+                 senders: &[U256]) -> UqoinResult<Self> {
         // Validate transactions
-        if Self::validate_transactions(transactions, &validator, state, senders).is_ok() {
-            // Calculate the message
-            let msg = Self::calc_msg(&block_info_prev.hash, &validator, 
-                                     transactions);
+        Self::validate_transactions(transactions, &validator, state, senders)?;
 
-            // Calculate the hash
-            let hash = Self::calc_hash(&msg, &nonce);
+        // Calculate the message
+        let msg = Self::calc_msg(&block_info_prev.hash, &validator, 
+                                 transactions);
 
-            // Validate hash
-            if Self::validate_hash_complexity(&hash, transactions.len(), 
-                                              complexity).is_ok() {
-                Some(Self::new(block_info_prev.offset, 
-                               transactions.len() as u64, 
-                               block_info_prev.hash.clone(),
-                               validator, nonce, hash))
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+        // Calculate the hash
+        let hash = Self::calc_hash(&msg, &nonce);
+
+        // Validate hash
+        Self::validate_hash_complexity(&hash, transactions.len(), complexity)?;
+
+        // Create a block
+        Ok(Self::new(block_info_prev.offset, 
+                     transactions.len() as u64, 
+                     block_info_prev.hash.clone(),
+                     validator, nonce, hash))
     }
 
     /// Validate coins. The checks:
     /// 1. All coins are unique.
     /// 2. All transactions are valid (see `Transaction::validate_coins()`).
-    pub fn validate_coins(transactions: &[Transaction], state: &State, senders: &[U256]) -> UqoinResult<()> {
+    pub fn validate_coins(transactions: &[Transaction], state: &State, 
+                          senders: &[U256]) -> UqoinResult<()> {
         // Repeated coins are not valid
         validate!(check_unique(transactions.iter().map(|tr| &tr.coin)), 
                   CoinNotUnique)?;
@@ -121,7 +119,9 @@ impl Block {
     /// 4. Values of groups and extensions correspond each other.
     /// Each group or extension has valid structure after the groupping because
     /// they cannot be created invalid due to inner validation.
-    pub fn validate_transactions(transactions: &[Transaction], validator: &U256, state: &State, senders: &[U256]) -> UqoinResult<()> {
+    pub fn validate_transactions(transactions: &[Transaction], validator: &U256, 
+                                 state: &State, senders: &[U256]) -> 
+                                 UqoinResult<()> {
         // Check coins
         Self::validate_coins(transactions, state, senders)?;
 
