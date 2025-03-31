@@ -167,7 +167,7 @@ impl Pool {
     }
 
     /// Remove invalid groups according to the given state.
-    pub fn update_groups(&mut self, state: &State) {
+    pub fn update(&mut self, state: &State) {
         let mut groups = Vec::new();
         let mut senders = Vec::new();
 
@@ -188,5 +188,6 @@ impl Pool {
         for (group, sender) in other.groups.iter().zip(other.senders.iter()) {
             self.add_group(&group, state, &sender);
         }
+        self.update(state);
     }
 }
