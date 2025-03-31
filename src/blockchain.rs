@@ -88,6 +88,44 @@ impl Blockchain {
         }
     }
 
+    /// Get many block data instances.
+    pub async fn get_block_data_many(&self, bix: u64, count: u64) -> 
+                                     TokioResult<Vec<BlockData>> {
+        if (bix > 0) && (count > 0) {
+            // Get all blocks
+            let blocks: Vec<Block> = self.block_col.lock().await
+                .get_many((bix - 1) as usize, count as usize).await?;
+
+            // Calculate transaction offset and count
+            let block_first = blocks.first().unwrap();
+            let block_last = blocks.last().unwrap();
+            let transaction_offset = block_first.offset;
+            let transaction_count = 
+                block_last.offset + block_last.size - transaction_offset;
+
+            // Get all transactions
+            let transactions: Vec<Transaction> = self.transaction_col
+                .lock().await.get_many(transaction_offset as usize, 
+                                       transaction_count as usize).await?;
+
+            // Gather block data vector
+            Ok(blocks.into_iter().enumerate().map(|(ix, block)| {
+                let trs = &transactions[
+                    (block.offset - transaction_offset) as usize
+                    ..
+                    (block.offset - transaction_offset + block.size) as usize
+                ];
+                BlockData {
+                    bix: bix + ix as u64,
+                    block,
+                    transactions: trs.to_vec(),
+                }
+            }).collect())
+        } else {
+            Err(ErrorKind::NotFound.into())
+        }
+    }
+
     /// Get last block.
     pub async fn get_last_block(&self) -> TokioResult<Block> {
         let bix = self.get_block_count().await?;
