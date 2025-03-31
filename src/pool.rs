@@ -26,6 +26,12 @@ impl Pool {
         }
     }
 
+    /// Clear pool.
+    pub fn clear(&mut self) {
+        self.groups.clear();
+        self.senders.clear();
+    }
+
     /// Add group to waiting transactions.
     pub fn add_group(&mut self, group: &Group, state: &State, sender: &U256) -> bool {
         let group_senders = vec![sender.clone(); group.len()];
