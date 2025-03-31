@@ -3,13 +3,13 @@ use finitelib::prelude::*;
 use finitelib::gf::prime::Prime;
 
 use crate::utils::*;
-use crate::edwards::TwistedEdwardsCurve;
+use crate::edwards::TwistedEdwardsCurveProj;
 
 
 /// Crypto schema object that is responsible for operations over keys,
 /// signatures, encryption. It also includes ECDSA algorithms.
 pub struct Schema {
-    curve: TwistedEdwardsCurve,
+    curve: TwistedEdwardsCurveProj,
     field: Prime<U256, R256>,
 }
 
@@ -17,24 +17,25 @@ pub struct Schema {
 impl Schema {
     /// Create a new schema object.
     pub fn new() -> Self {
-        let curve = TwistedEdwardsCurve::new_ed25519();
-        let field = Prime::new(R256{}, curve.order.clone());
+        let curve = TwistedEdwardsCurveProj::new_ed25519();
+        let field = Prime::new(R256{}, curve.base.order.clone());
         Self { curve, field }
     }
 
     /// Get ECC curve.
-    pub fn curve(&self) -> &TwistedEdwardsCurve {
+    pub fn curve(&self) -> &TwistedEdwardsCurveProj {
         &self.curve
     }
 
     /// Generate a random private key.
     pub fn gen_key<R: Rng>(&self, rng: &mut R) -> U256 {
-        &rng.random::<U256>() % &self.curve.order
+        &rng.random::<U256>() % &self.curve.base.order
     }
 
     /// Get public key from a private one.
     pub fn get_public(&self, key: &U256) -> U256 {
-        let point = self.curve.power(key.bit_iter());
+        let point_proj = self.curve.power(key.bit_iter());
+        let point = self.curve.convert_from(&point_proj);
         self.point_to_number(&point)
     }
 
@@ -54,7 +55,8 @@ impl Schema {
     pub fn build_signature<R: Rng>(&self, rng: &mut R, msg: &U256, 
                                    key: &U256) -> Signature {
         let t = self.gen_key(rng);
-        let r = self.curve.power(t.bit_iter());
+        let rj = self.curve.power(t.bit_iter());
+        let r = self.curve.convert_from(&rj);
         let sign_r = self.point_to_number(&r);
         let sign_s = self.field.div(
             &self.field.add(msg, &self.field.mul(key, &sign_r)),
@@ -73,13 +75,15 @@ impl Schema {
     pub fn extract_public(&self, msg: &U256, signature: &Signature) -> U256 {
         let (sign_r, sign_s) = signature;
         let r = self.point_from_number(&sign_r).unwrap();
+        let rj = self.curve.convert_into(&r);
 
         let u = self.field.div(sign_s, &sign_r).unwrap();
         let v = self.field.div(msg, &sign_r).unwrap();
-        let p = self.curve.sub(
-            &self.curve.mul_scalar(&r, u.bit_iter()),
+        let pj = self.curve.sub(
+            &self.curve.mul_scalar(&rj, u.bit_iter()),
             &self.curve.power(v.bit_iter())
         );
+        let p = self.curve.convert_from(&pj);
 
         self.point_to_number(&p)
     }
@@ -105,10 +109,10 @@ impl Schema {
             number.clone()
         };
 
-        let mut x = self.curve.calc_x(&y)?;
+        let mut x = self.curve.base.calc_x(&y)?;
 
         if x.bit_get(0) != is_odd {
-            x = self.curve.field.neg(&x);
+            x = self.curve.base.field.neg(&x);
         }
 
         Some((x, y))

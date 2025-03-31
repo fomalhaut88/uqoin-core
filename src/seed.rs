@@ -55,10 +55,11 @@ impl Seed {
     pub fn gen_keys(&self, schema: &Schema) -> impl Iterator<Item = U256> {
         let curve = schema.curve();
         let value = self.value();
-        let mut s = curve.generator.clone();
+        let mut j = curve.generator.clone();
         std::iter::from_fn(move || {
-            curve.mul_scalar_assign(&mut s, value.bit_iter());
-            let key = &schema.point_to_number(&s) % &curve.order;
+            curve.mul_scalar_assign(&mut j, value.bit_iter());
+            let p = curve.convert_from(&j);
+            let key = &schema.point_to_number(&p) % &curve.base.order;
             Some(key)
         })
     }

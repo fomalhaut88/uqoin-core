@@ -148,6 +148,93 @@ impl Group for TwistedEdwardsCurve {
 }
 
 
+/// Projective representation for TwistedEdwardsCurve. Note: it keeps converted
+/// generator.
+pub struct TwistedEdwardsCurveProj {
+    pub base: TwistedEdwardsCurve,
+    pub generator: (U256, U256, U256),
+}
+
+impl TwistedEdwardsCurveProj {
+    /// Create a new curve.
+    pub fn new_ed25519() -> Self {
+        let base = TwistedEdwardsCurve::new_ed25519();
+        let generator = (
+            base.generator.0.clone(), 
+            base.generator.1.clone(), 
+            base.field.one()
+        );
+        Self { base, generator }
+    }
+
+    /// Get base curve.
+    pub fn base(&self) -> &TwistedEdwardsCurve {
+        &self.base
+    }
+
+    /// Perform power.
+    pub fn power(&self, it: impl Iterator<Item = bool>) -> (U256, U256, U256) {
+        self.mul_scalar(&self.generator, it)
+    }
+
+    /// Convert into projective representation.
+    pub fn convert_into(&self, a: &(U256, U256)) -> (U256, U256, U256) {
+        (a.0.clone(), a.1.clone(), self.base.field.one())
+    }
+
+    /// Convert from projective representation.
+    pub fn convert_from(&self, p: &(U256, U256, U256)) -> (U256, U256) {
+        let iz = self.base.field.inv(&p.2).unwrap();
+        let x = self.base.field.mul(&p.0, &iz);
+        let y = self.base.field.mul(&p.1, &iz);
+        (x, y)
+    }
+}
+
+impl Group for TwistedEdwardsCurveProj {
+    type Item = (U256, U256, U256);
+
+    fn zero(&self) -> Self::Item {
+        self.convert_into(&self.base.zero())
+    }
+
+    fn eq(&self, a: &Self::Item, b: &Self::Item) -> bool {
+        (self.base.field.mul(&a.0, &b.2) == 
+         self.base.field.mul(&b.0, &a.2)) && 
+        (self.base.field.mul(&a.1, &b.2) == 
+         self.base.field.mul(&b.1, &a.2))
+    }
+
+    fn neg(&self, a: &Self::Item) -> Self::Item {
+        (self.base.field.neg(&a.0), a.1.clone(), a.2.clone())
+    }
+
+    fn add(&self, p: &Self::Item, q: &Self::Item) -> Self::Item {
+        let a = self.base.field.mul(&p.0, &q.0);
+        let b = self.base.field.mul(&p.1, &q.1);
+        let c = self.base.field.mul(&self.base.scalar, 
+                                    &self.base.field.mul(&a, &b));
+        let w = self.base.field.mul(&p.2, &q.2);
+        let d = self.base.field.mul(&w, &w);
+        let u = self.base.field.add(&d, &c);
+        let v = self.base.field.sub(&d, &c);
+        let x = self.base.field.mul(
+            &self.base.field.mul(&w, &u),
+            &self.base.field.add(
+                &self.base.field.mul(&p.0, &q.1),
+                &self.base.field.mul(&p.1, &q.0),
+            ),
+        );
+        let y = self.base.field.mul(
+            &self.base.field.mul(&w, &v),
+            &self.base.field.add(&a, &b),
+        );
+        let z = self.base.field.mul(&u, &v);
+        (x, y, z)
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,13 +295,52 @@ mod tests {
         // Create a curve instance
         let ed25519 = TwistedEdwardsCurve::new_ed25519();
 
-        // Random generator
-        let mut rng = rand::rng();
+        // Power (private key)
+        let k = U256::from_hex(
+            "0C9C3CC559450A34CF3A1CFBC109672CAC8E3DFA115A3F62ADBB321102CAC9DC"
+        );
+
+        // Point (public key)
+        let px = U256::from_hex(
+            "3E1D4C338BAB6EA001454D81C8AB62E73199864E4A0FAC45505330314BF40344"
+        );
+        let py = U256::from_hex(
+            "2F3FA51805B460E07A5AC480E3260FC9C3F4F6F09A91339260A0E81BF4FB2488"
+        );
 
         // Benchmark
         bencher.iter(|| {
-            let k: U256 = rng.random();
-            let _ = ed25519.power(k.bit_iter());
+            let p = ed25519.power(k.bit_iter());
+            assert_eq!(p.0, px);
+            assert_eq!(p.1, py);
+        });
+    }
+
+    #[bench]
+    fn bench_power_proj(bencher: &mut Bencher) {
+        // Create a curve instance
+        let curve = TwistedEdwardsCurveProj::new_ed25519();
+
+        // Power (private key)
+        let k = U256::from_hex(
+            "0C9C3CC559450A34CF3A1CFBC109672CAC8E3DFA115A3F62ADBB321102CAC9DC"
+        );
+
+        // Point (public key)
+        let px = U256::from_hex(
+            "3E1D4C338BAB6EA001454D81C8AB62E73199864E4A0FAC45505330314BF40344"
+        );
+        let py = U256::from_hex(
+            "2F3FA51805B460E07A5AC480E3260FC9C3F4F6F09A91339260A0E81BF4FB2488"
+        );
+
+        // Benchmark
+        bencher.iter(|| {
+            let s = curve.power(k.bit_iter());
+
+            let (qx, qy) = curve.convert_from(&s);
+            assert_eq!(qx, px);
+            assert_eq!(qy, py);
         });
     }
 

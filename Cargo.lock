@@ -135,9 +135,9 @@ dependencies = [
 
 [[package]]
 name = "finitelib"
-version = "0.1.12"
+version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05b7543755044c65fe026d96dec40dc3e257e21f9adcbc1b594039151b67b3e6"
+checksum = "5988009bdb0698b461145ba1f5ed0ccc7fd81e9cc716b0d1989291316ba6763e"
 dependencies = [
  "rand",
  "serde",
