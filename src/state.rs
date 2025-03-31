@@ -6,7 +6,6 @@ use serde::{Serialize, Deserialize};
 use tokio::io::{Result as TokioResult};
 
 use crate::utils::*;
-use crate::schema::Schema;
 use crate::coin::coin_order;
 use crate::block::{Block, BlockInfo};
 use crate::transaction::{Transaction, Type};
@@ -99,17 +98,14 @@ impl State {
 
     /// Roll up the state with the next block.
     pub fn roll_up(&mut self, bix: u64, block: &Block, 
-                   transactions: &[Transaction], schema: &Schema) {
+                   transactions: &[Transaction], senders: &[U256]) {
         // Check the block
         assert_eq!(bix, self.last_block_info.bix + 1);
         assert_eq!(block.offset, self.last_block_info.offset);
         assert_eq!(block.hash_prev, self.last_block_info.hash);
 
         // Iterate transactions
-        for transaction in transactions.iter() {
-            // Get sender
-            let sender = transaction.get_sender(self, schema);
-
+        for (transaction, sender) in transactions.iter().zip(senders.iter()) {
             // Get receiver
             let receiver = if transaction.get_type() == Type::Transfer {
                 &transaction.addr
@@ -155,7 +151,7 @@ impl State {
 
     /// Roll down the state with the last block.
     pub fn roll_down(&mut self, bix: u64, block: &Block, 
-                     transactions: &[Transaction], schema: &Schema) {
+                     transactions: &[Transaction], senders: &[U256]) {
         // Check the block
         assert_eq!(bix, self.last_block_info.bix);
         assert_eq!(block.offset + transactions.len() as u64, 
@@ -174,10 +170,7 @@ impl State {
         }
 
         // Iterate transactions
-        for transaction in transactions.iter() {
-            // Get sender
-            let sender = transaction.get_sender(self, schema);
-
+        for (transaction, sender) in transactions.iter().zip(senders.iter()) {
             // Get receiver
             let receiver = if transaction.get_type() == Type::Transfer {
                 &transaction.addr

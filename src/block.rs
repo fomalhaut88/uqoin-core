@@ -5,7 +5,6 @@ use serde::{Serialize, Deserialize};
 use crate::validate;
 use crate::utils::*;
 use crate::transaction::{Type, Transaction, group_transactions};
-use crate::schema::Schema;
 use crate::state::State;
 
 
@@ -41,7 +40,7 @@ impl Block {
     /// one.
     pub fn validate(&self, transactions: &[Transaction], 
                     block_info_prev: &BlockInfo, complexity: usize, 
-                    schema: &Schema, state: &State) -> UqoinResult<()> {
+                    state: &State, senders: &[U256]) -> UqoinResult<()> {
         // Check block hash
         validate!(block_info_prev.hash == self.hash_prev, 
                   BlockPreviousHashMismatch)?;
@@ -51,8 +50,7 @@ impl Block {
                   BlockOffsetMismatch)?;
 
         // Validate transactions
-        Self::validate_transactions(transactions, &self.validator, schema, 
-                                    state)?;
+        Self::validate_transactions(transactions, &self.validator, state, senders)?;
 
         // Calculate the message
         let msg = Self::calc_msg(&self.hash_prev, &self.validator, 
@@ -75,11 +73,9 @@ impl Block {
     /// Build a new block for the transactions. It validates the final hash.
     pub fn build(block_info_prev: &BlockInfo, validator: U256, 
                  transactions: &[Transaction], nonce: U256,
-                 complexity: usize, schema: &Schema,
-                 state: &State) -> Option<Self> {
+                 complexity: usize, state: &State, senders: &[U256]) -> Option<Self> {
         // Validate transactions
-        if Self::validate_transactions(transactions, &validator, schema, 
-                                       state).is_ok() {
+        if Self::validate_transactions(transactions, &validator, state, senders).is_ok() {
             // Calculate the message
             let msg = Self::calc_msg(&block_info_prev.hash, &validator, 
                                      transactions);
@@ -105,15 +101,14 @@ impl Block {
     /// Validate coins. The checks:
     /// 1. All coins are unique.
     /// 2. All transactions are valid (see `Transaction::validate_coins()`).
-    pub fn validate_coins(transactions: &[Transaction], schema: &Schema, 
-                          state: &State) -> UqoinResult<()> {
+    pub fn validate_coins(transactions: &[Transaction], state: &State, senders: &[U256]) -> UqoinResult<()> {
         // Repeated coins are not valid
         validate!(check_unique(transactions.iter().map(|tr| &tr.coin)), 
                   CoinNotUnique)?;
 
         // Validate coin in each transaction
-        for transaction in transactions.iter() {
-            transaction.validate_coin(schema, state)?;
+        for (transaction, sender) in transactions.iter().zip(senders.iter()) {
+            transaction.validate_coin(state, sender)?;
         }
 
         Ok(())
@@ -126,27 +121,28 @@ impl Block {
     /// 4. Values of groups and extensions correspond each other.
     /// Each group or extension has valid structure after the groupping because
     /// they cannot be created invalid due to inner validation.
-    pub fn validate_transactions(transactions: &[Transaction], 
-                                 validator: &U256, schema: &Schema, 
-                                 state: &State) -> UqoinResult<()> {
+    pub fn validate_transactions(transactions: &[Transaction], validator: &U256, state: &State, senders: &[U256]) -> UqoinResult<()> {
         // Check coins
-        Self::validate_coins(transactions, schema, state)?;
+        Self::validate_coins(transactions, state, senders)?;
 
         // Set a countdown for groupped transactions
         let mut countdown = transactions.len();
 
         // Loop for groups and extensions
-        for (group, ext) in group_transactions(transactions.to_vec(), schema, 
-                                               state) {
+        for (offset, group, ext) in group_transactions(transactions.to_vec(), state, senders) {
+            // Get senders
+            let group_senders = &senders[offset .. offset + group.len()];
+            let ext_senders = &senders[offset + group.len() .. offset + group.len() + ext.len()];
+
             // Check validator
-            if let Some(ext_sender) = ext.get_sender(state, schema) {
+            if let Some(ext_sender) = ext.get_sender(ext_senders) {
                 validate!(&ext_sender == validator, BlockValidatorMismatch)?;
             }
 
             // Check value
             if ext.get_type() != Type::Transfer {
-                validate!(group.get_order(state, schema) 
-                          == ext.get_order(state, schema), BlockOrderMismatch)?;
+                validate!(group.get_order(state, group_senders) 
+                          == ext.get_order(state, ext_senders), BlockOrderMismatch)?;
             }
 
             // Decrement the countdown

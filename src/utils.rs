@@ -30,15 +30,6 @@ pub fn hash_of_u256<'a, I: Iterator<Item = &'a U256>>(elems: I) -> U256 {
 }
 
 
-// /// Get SHA3 hash of a buffer.
-// pub fn hash_of_buffer(buffer: &[u8]) -> U256 {
-//     let mut hasher = Sha3_256::new();
-//     hasher.update(buffer);
-//     let bytes = hasher.finalize();
-//     U256::from_bytes(&bytes)
-// }
-
-
 /// Cut first elements from a vector.
 pub fn vec_split_left<T>(v: &mut Vec<T>, ix: usize) -> Vec<T> {
     let mut u = v.split_off(ix);

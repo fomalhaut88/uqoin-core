@@ -69,6 +69,7 @@ impl Transaction {
     }
 
     /// Get transaction sender.
+    #[deprecated(since="0.1.0", note="use precalculated sender instead")]
     pub fn get_sender(&self, state: &State, schema: &Schema) -> U256 {
         let counter = state.get_coin_counter(&self.coin);
         schema.extract_public(
@@ -78,12 +79,11 @@ impl Transaction {
     }
 
     /// Get order of the coin.
-    pub fn get_order(&self, state: &State, schema: &Schema) -> u64 {
+    pub fn get_order(&self, state: &State, sender: &U256) -> u64 {
         if let Some(coin_info) = state.get_coin_info(&self.coin) {
             coin_info.order
         } else {
-            let miner = self.get_sender(state, schema);
-            coin_order(&self.coin, &miner)
+            coin_order(&self.coin, sender)
         }
     }
 
@@ -91,11 +91,7 @@ impl Transaction {
     /// 1. Sender is the owner of each coin, if it met before.
     /// 2. The coin number corresponds the previous block hash and the sender
     /// if the coin is new (just mined).
-    pub fn validate_coin(&self, schema: &Schema, 
-                         state: &State) -> UqoinResult<()> {
-        // Get sender
-        let sender = &self.get_sender(state, schema);
-
+    pub fn validate_coin(&self, state: &State, sender: &U256) -> UqoinResult<()> {
         // Try to find the coin in coin-owner map
         if let Some(owner) = state.get_owner(&self.coin) {
             // Check ownership
@@ -112,6 +108,18 @@ impl Transaction {
     pub fn calc_msg(coin: &U256, addr: &U256, counter: u64) -> U256 {
         hash_of_u256([coin, addr, &U256::from(counter)].into_iter())
     }
+
+    /// Calculate senders of given transactions. Since the sender is extracted
+    /// from signature, it takes a while, so use it carefully.
+    pub fn calc_senders(transactions: &[Self], state: &State, 
+                        schema: &Schema) -> Vec<U256> {
+        transactions.iter().map(|tr| {
+            let counter = state.get_coin_counter(&tr.coin);
+            let msg = Self::calc_msg(&tr.coin, &tr.addr, counter);
+            let signature = (tr.sign_r.clone(), tr.sign_s.clone());
+            schema.extract_public(&msg, &signature)
+        }).collect::<Vec<U256>>()
+    }
 }
 
 
@@ -127,9 +135,8 @@ pub struct Group(Vec<Transaction>);
 impl Group {
     /// Create group from transactions. Validation is included, so if the
     /// vector is not valid, `None` will be returned.
-    pub fn new(transactions: Vec<Transaction>, schema: &Schema, 
-               state: &State) -> Option<Self> {
-        if Self::validate_transactions(&transactions, schema, state).is_ok() {
+    pub fn new(transactions: Vec<Transaction>, state: &State, senders: &[U256]) -> Option<Self> {
+        if Self::validate_transactions(&transactions, state, senders).is_ok() {
             Some(Self(transactions))
         } else {
             None
@@ -138,8 +145,7 @@ impl Group {
 
     /// Try to create a group from the leading transactions in the given slice.
     /// Fees are joined by the greedy approach.
-    pub fn from_vec(transactions: &mut Vec<Transaction>, schema: &Schema, 
-                    state: &State) -> Option<Self> {
+    pub fn from_vec(transactions: &mut Vec<Transaction>, state: &State, senders: &[U256]) -> Option<Self> {
         if transactions.is_empty() {
             // `None` if the slice is empty
             None
@@ -164,7 +170,7 @@ impl Group {
 
                 // Try to create a group using validation in `Self::new`
                 let trs = vec_split_left(transactions, size);
-                Self::new(trs, schema, state)
+                Self::new(trs, state, &senders[..size])
             }
         }
     }
@@ -180,8 +186,8 @@ impl Group {
     }
 
     /// Get sender of the group.
-    pub fn get_sender(&self, state: &State, schema: &Schema) -> U256 {
-        self.0[0].get_sender(state, schema)
+    pub fn get_sender(&self, senders: &[U256]) -> U256 {
+        senders[0].clone()
     }
 
     /// Get fee transaction.
@@ -206,11 +212,11 @@ impl Group {
     }
 
     /// Get order of the main coins.
-    pub fn get_order(&self, state: &State, schema: &Schema) -> u64 {
+    pub fn get_order(&self, state: &State, senders: &[U256]) -> u64 {
         match self.get_type() {
-            Type::Split => self.0[0].get_order(state, schema),
-            Type::Merge => self.0[0].get_order(state, schema) + 1,
-            Type::Transfer => self.0[0].get_order(state, schema),
+            Type::Split => self.0[0].get_order(state, &senders[0]),
+            Type::Merge => self.0[0].get_order(state, &senders[0]) + 1,
+            Type::Transfer => self.0[0].get_order(state, &senders[0]),
             _ => panic!("Invalid transactions in the group."),
         }
     }
@@ -226,8 +232,7 @@ impl Group {
     }
 
     /// Validate transactions for the group creation.
-    pub fn validate_transactions(transactions: &[Transaction], schema: &Schema, 
-                                 state: &State) -> UqoinResult<()> {
+    pub fn validate_transactions(transactions: &[Transaction], state: &State, senders: &[U256]) -> UqoinResult<()> {
         // Error if no transactions in the slice
         validate!(!transactions.is_empty(), TransactionEmpty)?;
 
@@ -236,9 +241,7 @@ impl Group {
                   CoinNotUnique)?;
 
         // Check same sender
-        validate!(check_same(transactions.iter()
-                        .map(|tr| tr.get_sender(state, schema))), 
-                  TransactionInvalidSender)?;
+        validate!(check_same(senders.iter()), TransactionInvalidSender)?;
 
         // Check the first type
         match transactions[0].get_type() {
@@ -269,9 +272,9 @@ impl Group {
 
                 validate!(type_check, TransactionBrokenGroup)?;
 
-                let order0 = transactions[0].get_order(state, schema);
-                let order1 = transactions[1].get_order(state, schema);
-                let order2 = transactions[2].get_order(state, schema);
+                let order0 = transactions[0].get_order(state, &senders[0]);
+                let order1 = transactions[1].get_order(state, &senders[1]);
+                let order2 = transactions[2].get_order(state, &senders[2]);
 
                 let order_check = (order1 + 1 == order0) && 
                                   (order2 + 1 == order0);
@@ -307,9 +310,8 @@ pub struct Ext(Vec<Transaction>);
 
 impl Ext {
     /// Create a new extension from transactions.
-    pub fn new(transactions: Vec<Transaction>, schema: &Schema, 
-               state: &State) -> Option<Self> {
-        if Self::validate_transactions(&transactions, schema, state).is_ok() {
+    pub fn new(transactions: Vec<Transaction>, state: &State, senders: &[U256]) -> Option<Self> {
+        if Self::validate_transactions(&transactions, state, senders).is_ok() {
             Some(Self(transactions))
         } else {
             None
@@ -332,11 +334,11 @@ impl Ext {
     }
 
     /// Get sender of the extension.
-    pub fn get_sender(&self, state: &State, schema: &Schema) -> Option<U256> {
+    pub fn get_sender(&self, senders: &[U256]) -> Option<U256> {
         if self.0.is_empty() {
             None
         } else {
-            Some(self.0[0].get_sender(state, schema))
+            Some(senders[0].clone())
         }
     }
 
@@ -346,26 +348,23 @@ impl Ext {
     }
 
     /// Get order of the main coins in the extension.
-    pub fn get_order(&self, state: &State, schema: &Schema) -> u64 {
+    pub fn get_order(&self, state: &State, senders: &[U256]) -> u64 {
         match self.0.len() {
             0 => 0,
-            1 => self.0[0].get_order(state, schema),
-            3 => &self.0[0].get_order(state, schema) + 1,
+            1 => self.0[0].get_order(state, &senders[0]),
+            3 => &self.0[0].get_order(state, &senders[0]) + 1,
             _ => panic!("Invalid transactions in the group."),
         }
     }
 
     /// Validate transactions for the extension creation.
-    pub fn validate_transactions(transactions: &[Transaction], schema: &Schema, 
-                                 state: &State) -> UqoinResult<()> {
+    pub fn validate_transactions(transactions: &[Transaction], state: &State, senders: &[U256]) -> UqoinResult<()> {
         // Check unique coins
         validate!(check_unique(transactions.iter().map(|tr| &tr.coin)), 
                   CoinNotUnique)?;
 
         // Check same sender
-        validate!(check_same(transactions.iter()
-                        .map(|tr| tr.get_sender(state, schema))), 
-                  TransactionInvalidSender)?;
+        validate!(check_same(senders.iter()), TransactionInvalidSender)?;
 
         // Check the size
         match transactions.len() {
@@ -378,8 +377,7 @@ impl Ext {
 
             // Complex check for the split check
             3 => {
-                // Get the first sender and addr
-                let sender = transactions[0].get_sender(state, schema);
+                // Get the first addr
                 let addr = &transactions[0].addr;
 
                 // Check transfer type
@@ -387,13 +385,6 @@ impl Ext {
                     .all(|tr| tr.get_type() == Type::Transfer);
 
                 validate!(type_check, TransactionBrokenExt)?;
-
-                // Check same sender
-                let sender_check = 
-                    (transactions[1].get_sender(state, schema) == sender) && 
-                    (transactions[2].get_sender(state, schema) == sender);
-
-                validate!(sender_check, TransactionBrokenExt)?;
 
                 // Check same addr
                 let addr_check = 
@@ -403,9 +394,9 @@ impl Ext {
                 validate!(addr_check, TransactionBrokenExt)?;
 
                 // Check order
-                let order0 = transactions[0].get_order(state, schema);
-                let order1 = transactions[1].get_order(state, schema);
-                let order2 = transactions[2].get_order(state, schema);
+                let order0 = transactions[0].get_order(state, &senders[0]);
+                let order1 = transactions[1].get_order(state, &senders[1]);
+                let order2 = transactions[2].get_order(state, &senders[2]);
 
                 let order_check = (order1 + 1 == order0) && 
                                   (order2 + 1 == order0);
@@ -425,15 +416,19 @@ impl Ext {
 /// Try to split transactions into groups and extensions. In case of not valid
 /// `transactions` the iterator stops until the first error, so for the
 /// validation purpose check the total size of yielded groups and extensions.
-pub fn group_transactions(mut transactions: Vec<Transaction>, schema: &Schema, 
-                          state: &State) -> impl Iterator<Item = (Group, Ext)> {
+pub fn group_transactions(mut transactions: Vec<Transaction>, state: &State, senders: &[U256]) -> impl Iterator<Item = (usize, Group, Ext)> {
+    let mut offset = 0;
     std::iter::from_fn(move || {
-        if let Some(group) = Group::from_vec(&mut transactions, schema, state) {
+        if let Some(group) = Group::from_vec(&mut transactions, state, &senders[offset..]) {
+            let group_size = group.len();
             let ext_size = group.ext_size();
             let ext_trs = vec_split_left(&mut transactions, ext_size);
+            let ext_senders = &senders[offset + group_size .. offset + group_size + ext_size];
 
-            if let Some(ext) = Ext::new(ext_trs, schema, state) {
-                Some((group, ext))
+            if let Some(ext) = Ext::new(ext_trs, state, ext_senders) {
+                let res = (offset, group, ext);
+                offset += group_size + ext_size;
+                Some(res)
             } else {
                 None
             }

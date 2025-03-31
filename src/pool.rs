@@ -12,8 +12,8 @@ use crate::state::State;
 /// Validator pool that keeps requested transactions.
 #[derive(Debug, Clone)]
 pub struct Pool {
-    // config: PoolConfig,
     groups: Vec<Group>,
+    senders: Vec<U256>,
 }
 
 
@@ -22,14 +22,16 @@ impl Pool {
     pub fn new() -> Self {
         Self {
             groups: Vec::new(),
+            senders: Vec::new(),
         }
     }
 
     /// Add group to waiting transactions.
-    pub fn add_group(&mut self, group: &Group, schema: &Schema, 
-                     state: &State) -> bool {
-        if Block::validate_coins(group.transactions(), schema, state).is_ok() {
+    pub fn add_group(&mut self, group: &Group, state: &State, sender: &U256) -> bool {
+        let group_senders = vec![sender.clone(); group.len()];
+        if Block::validate_coins(group.transactions(), state, &group_senders).is_ok() {
             self.groups.push(group.clone());
+            self.senders.push(sender.clone());
             true
         } else {
             false
@@ -61,10 +63,9 @@ impl Pool {
 
         // Look for all groups
         let groups_max = groups_max.unwrap_or(1000000000);
-        for group in self.groups.iter().take(groups_max) {
-            // Get sender and order
-            let sender = group.get_sender(state, schema);
-            let order = group.get_order(state, schema);
+        for (group, sender) in self.groups.iter().zip(self.senders.iter()).take(groups_max) {
+            // Get order
+            let order = group.get_order(state, &vec![sender.clone(); group.len()]);
 
             // Skip if the group contains any seen coin
             if group.transactions().iter()
@@ -125,49 +126,61 @@ impl Pool {
         None
     }
 
-    /// Update the pool with transactions of the new block.
-    pub fn roll_up(&mut self, transactions: &[Transaction], schema: &Schema, 
-                   state: &State) {
-        // Drop groups by intersected coins
+    /// Update the pool with transactions of the new block. `state` is supposed 
+    /// to be already rolled up.
+    pub fn roll_up(&mut self, transactions: &[Transaction], state: &State) {
         let coins = transactions.iter().map(|tr| tr.coin.clone())
             .collect::<HashSet<U256>>();
-        self.groups = self.groups.iter().filter(
-            |gr| gr.transactions().iter().all(|tr| !coins.contains(&tr.coin))
-        ).cloned().collect();
 
-        // Update existing groups
-        self.update_groups(schema, state);
-    }
+        let mut groups = Vec::new();
+        let mut senders = Vec::new();
 
-    /// Roll back the pool state with transactions of the last block.
-    pub fn roll_down(&mut self, transactions: &[Transaction], schema: &Schema, 
-                     state: &State) {
-        // Add new groups from rolled transactions
-        for (gr, _) in group_transactions(transactions.to_vec(), schema, 
-                                          state) {
-            self.add_group(&gr, schema, state);
+        for (group, sender) in self.groups.iter().zip(self.senders.iter()) {
+            let group_senders = vec![sender.clone(); group.len()];
+            let coins_are_not_repeated = group.transactions().iter()
+                .all(|tr| !coins.contains(&tr.coin));
+            let coins_are_valid = Block::validate_coins(
+                group.transactions(), state, &group_senders
+            ).is_ok();
+            if coins_are_not_repeated && coins_are_valid {
+                groups.push(group.clone());
+                senders.push(sender.clone());
+            }
         }
 
-        // Update existing groups
-        self.update_groups(schema, state);
+        self.groups = groups;
+        self.senders = senders;
+    }
+
+    /// Roll back the pool state with transactions of the last block. `state` 
+    /// is supposed to be already rolled down.
+    pub fn roll_down(&mut self, transactions: &[Transaction], state: &State, senders: &[U256]) {
+        for (ofs, gr, _) in group_transactions(transactions.to_vec(), state, senders) {
+            self.add_group(&gr, state, &senders[ofs]);
+        }
     }
 
     /// Remove invalid groups according to the given state.
-    pub fn update_groups(&mut self, schema: &Schema, state: &State) {
-        // Remove invalid groups in the current state
-        self.groups = self.groups.iter().filter(
-            |gr| Block::validate_coins(gr.transactions(), schema, state).is_ok()
-        ).cloned().collect();
+    pub fn update_groups(&mut self, state: &State) {
+        let mut groups = Vec::new();
+        let mut senders = Vec::new();
+
+        for (group, sender) in self.groups.iter().zip(self.senders.iter()) {
+            let group_senders = vec![sender.clone(); group.len()];
+            if Block::validate_coins(group.transactions(), state, &group_senders).is_ok() {
+                groups.push(group.clone());
+                senders.push(sender.clone());
+            }
+        }
+
+        self.groups = groups;
+        self.senders = senders;
     }
 
     /// Merge pools, the state must correspond to `other` pool.
-    pub fn merge(&mut self, other: &Self, schema: &Schema, state: &State) {
-        // Update existing groups
-        self.update_groups(schema, state);
-
-        // Add groups
-        for gr in other.groups.iter() {
-            self.add_group(&gr, schema, state);
+    pub fn merge(&mut self, other: &Self, state: &State) {
+        for (group, sender) in other.groups.iter().zip(other.senders.iter()) {
+            self.add_group(&group, state, &sender);
         }
     }
 }
