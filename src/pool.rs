@@ -33,15 +33,13 @@ impl Pool {
     }
 
     /// Add group to waiting transactions.
-    pub fn add_group(&mut self, group: &Group, state: &State, sender: &U256) -> bool {
+    pub fn add_group(&mut self, group: &Group, state: &State, 
+                     sender: &U256) -> UqoinResult<()> {
         let group_senders = vec![sender.clone(); group.len()];
-        if Block::validate_coins(group.transactions(), state, &group_senders).is_ok() {
-            self.groups.push(group.clone());
-            self.senders.push(sender.clone());
-            true
-        } else {
-            false
-        }
+        Block::validate_coins(group.transactions(), state, &group_senders)?;
+        self.groups.push(group.clone());
+        self.senders.push(sender.clone());
+        Ok(())
     }
 
     /// Get ready transactions for next block.
@@ -69,9 +67,11 @@ impl Pool {
 
         // Look for all groups
         let groups_max = groups_max.unwrap_or(1000000000);
-        for (group, sender) in self.groups.iter().zip(self.senders.iter()).take(groups_max) {
+        for (group, sender) in self.groups.iter().zip(self.senders.iter())
+                                          .take(groups_max) {
             // Get order
-            let order = group.get_order(state, &vec![sender.clone(); group.len()]);
+            let order = group.get_order(state, 
+                                        &vec![sender.clone(); group.len()]);
 
             // Skip if the group contains any seen coin
             if group.transactions().iter()
@@ -160,9 +160,11 @@ impl Pool {
 
     /// Roll back the pool state with transactions of the last block. `state` 
     /// is supposed to be already rolled down.
-    pub fn roll_down(&mut self, transactions: &[Transaction], state: &State, senders: &[U256]) {
-        for (ofs, gr, _) in group_transactions(transactions.to_vec(), state, senders) {
-            self.add_group(&gr, state, &senders[ofs]);
+    pub fn roll_down(&mut self, transactions: &[Transaction], state: &State, 
+                     senders: &[U256]) {
+        for (ofs, gr, _) in group_transactions(transactions.to_vec(), state, 
+                                               senders) {
+            let _ = self.add_group(&gr, state, &senders[ofs]);
         }
     }
 
@@ -173,7 +175,8 @@ impl Pool {
 
         for (group, sender) in self.groups.iter().zip(self.senders.iter()) {
             let group_senders = vec![sender.clone(); group.len()];
-            if Block::validate_coins(group.transactions(), state, &group_senders).is_ok() {
+            if Block::validate_coins(group.transactions(), state, 
+                                     &group_senders).is_ok() {
                 groups.push(group.clone());
                 senders.push(sender.clone());
             }
@@ -186,7 +189,7 @@ impl Pool {
     /// Merge pools, the state must correspond to `other` pool.
     pub fn merge(&mut self, other: &Self, state: &State) {
         for (group, sender) in other.groups.iter().zip(other.senders.iter()) {
-            self.add_group(&group, state, &sender);
+            let _ = self.add_group(&group, state, &sender);
         }
         self.update(state);
     }
