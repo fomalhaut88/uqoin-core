@@ -263,8 +263,8 @@ mod tests {
         let ed25519 = TwistedEdwardsCurve::new_ed25519();
 
         // Test y
-        let y = U256::from_decimal(
-            "1199956463082827061555360551106195666022978064759116914037829679333165248376"
+        let y = U256::from_hex(
+            "57646626CB303A9EEBAAD078ACD56328DC4BFFC745FD5063738D9E10BF513204"
         );
 
         // Calculate x

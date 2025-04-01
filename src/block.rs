@@ -50,7 +50,8 @@ impl Block {
                   BlockOffsetMismatch)?;
 
         // Validate transactions
-        Self::validate_transactions(transactions, &self.validator, state, senders)?;
+        Self::validate_transactions(transactions, &self.validator, state, 
+                                    senders)?;
 
         // Calculate the message
         let msg = Self::calc_msg(&self.hash_prev, &self.validator, 
@@ -129,10 +130,13 @@ impl Block {
         let mut countdown = transactions.len();
 
         // Loop for groups and extensions
-        for (offset, group, ext) in group_transactions(transactions.to_vec(), state, senders) {
+        for (offset, group, ext) in group_transactions(transactions.to_vec(), 
+                                                       state, senders) {
             // Get senders
             let group_senders = &senders[offset .. offset + group.len()];
-            let ext_senders = &senders[offset + group.len() .. offset + group.len() + ext.len()];
+            let ext_senders = &senders[
+                offset + group.len() .. offset + group.len() + ext.len()
+            ];
 
             // Check validator
             if let Some(ext_sender) = ext.get_sender(ext_senders) {
@@ -142,7 +146,7 @@ impl Block {
             // Check value
             if ext.get_type() != Type::Transfer {
                 validate!(group.get_order(state, group_senders) 
-                          == ext.get_order(state, ext_senders), BlockOrderMismatch)?;
+                    == ext.get_order(state, ext_senders), BlockOrderMismatch)?;
             }
 
             // Decrement the countdown
