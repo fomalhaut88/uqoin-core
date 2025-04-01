@@ -6,6 +6,7 @@ use crate::utils::*;
 use crate::schema::Schema;
 use crate::coin::{coin_validate, coin_order};
 use crate::state::State;
+use crate::error::ErrorKind;
 
 
 /// Types of transaction or group. In case of group Fee must be incorrect.
@@ -91,7 +92,8 @@ impl Transaction {
     /// 1. Sender is the owner of each coin, if it met before.
     /// 2. The coin number corresponds the previous block hash and the sender
     /// if the coin is new (just mined).
-    pub fn validate_coin(&self, state: &State, sender: &U256) -> UqoinResult<()> {
+    pub fn validate_coin(&self, state: &State, 
+                         sender: &U256) -> UqoinResult<()> {
         // Try to find the coin in coin-owner map
         if let Some(owner) = state.get_owner(&self.coin) {
             // Check ownership
@@ -135,20 +137,19 @@ pub struct Group(Vec<Transaction>);
 impl Group {
     /// Create group from transactions. Validation is included, so if the
     /// vector is not valid, `None` will be returned.
-    pub fn new(transactions: Vec<Transaction>, state: &State, senders: &[U256]) -> Option<Self> {
-        if Self::validate_transactions(&transactions, state, senders).is_ok() {
-            Some(Self(transactions))
-        } else {
-            None
-        }
+    pub fn new(transactions: Vec<Transaction>, state: &State, 
+               senders: &[U256]) -> UqoinResult<Self> {
+        Self::validate_transactions(&transactions, state, senders)?;
+        Ok(Self(transactions))
     }
 
     /// Try to create a group from the leading transactions in the given slice.
     /// Fees are joined by the greedy approach.
-    pub fn from_vec(transactions: &mut Vec<Transaction>, state: &State, senders: &[U256]) -> Option<Self> {
+    pub fn from_vec(transactions: &mut Vec<Transaction>, state: &State, 
+                    senders: &[U256]) -> UqoinResult<Self> {
         if transactions.is_empty() {
-            // `None` if the slice is empty
-            None
+            // `TransactionEmpty` if the slice is empty
+            Err(ErrorKind::TransactionEmpty.into())
         } else {
             // Size of the group without fee
             let mut size = match transactions[0].get_type() {
@@ -159,8 +160,8 @@ impl Group {
             };
 
             if size == 0 {
-                // `None` if we start from a fee transaction
-                None
+                // `TransactionBrokenGroup` if we start from a fee transaction
+                Err(ErrorKind::TransactionBrokenGroup.into())
             } else {
                 // Increment size if the next transaction is fee
                 if (size < transactions.len()) && 
@@ -232,7 +233,8 @@ impl Group {
     }
 
     /// Validate transactions for the group creation.
-    pub fn validate_transactions(transactions: &[Transaction], state: &State, senders: &[U256]) -> UqoinResult<()> {
+    pub fn validate_transactions(transactions: &[Transaction], state: &State, 
+                                 senders: &[U256]) -> UqoinResult<()> {
         // Error if no transactions in the slice
         validate!(!transactions.is_empty(), TransactionEmpty)?;
 
@@ -310,12 +312,10 @@ pub struct Ext(Vec<Transaction>);
 
 impl Ext {
     /// Create a new extension from transactions.
-    pub fn new(transactions: Vec<Transaction>, state: &State, senders: &[U256]) -> Option<Self> {
-        if Self::validate_transactions(&transactions, state, senders).is_ok() {
-            Some(Self(transactions))
-        } else {
-            None
-        }
+    pub fn new(transactions: Vec<Transaction>, state: &State, 
+               senders: &[U256]) -> UqoinResult<Self> {
+        Self::validate_transactions(&transactions, state, senders)?;
+        Ok(Self(transactions))
     }
 
     /// Accessor to the inner transactions.
@@ -358,7 +358,8 @@ impl Ext {
     }
 
     /// Validate transactions for the extension creation.
-    pub fn validate_transactions(transactions: &[Transaction], state: &State, senders: &[U256]) -> UqoinResult<()> {
+    pub fn validate_transactions(transactions: &[Transaction], state: &State, 
+                                 senders: &[U256]) -> UqoinResult<()> {
         // Check unique coins
         validate!(check_unique(transactions.iter().map(|tr| &tr.coin)), 
                   CoinNotUnique)?;
@@ -416,16 +417,21 @@ impl Ext {
 /// Try to split transactions into groups and extensions. In case of not valid
 /// `transactions` the iterator stops until the first error, so for the
 /// validation purpose check the total size of yielded groups and extensions.
-pub fn group_transactions(mut transactions: Vec<Transaction>, state: &State, senders: &[U256]) -> impl Iterator<Item = (usize, Group, Ext)> {
+pub fn group_transactions(mut transactions: Vec<Transaction>, state: &State, 
+                          senders: &[U256]) -> 
+                          impl Iterator<Item = (usize, Group, Ext)> {
     let mut offset = 0;
     std::iter::from_fn(move || {
-        if let Some(group) = Group::from_vec(&mut transactions, state, &senders[offset..]) {
+        if let Ok(group) = Group::from_vec(&mut transactions, state, 
+                                           &senders[offset..]) {
             let group_size = group.len();
             let ext_size = group.ext_size();
             let ext_trs = vec_split_left(&mut transactions, ext_size);
-            let ext_senders = &senders[offset + group_size .. offset + group_size + ext_size];
+            let ext_senders = &senders[
+                offset + group_size .. offset + group_size + ext_size
+            ];
 
-            if let Some(ext) = Ext::new(ext_trs, state, ext_senders) {
+            if let Ok(ext) = Ext::new(ext_trs, state, ext_senders) {
                 let res = (offset, group, ext);
                 offset += group_size + ext_size;
                 Some(res)
