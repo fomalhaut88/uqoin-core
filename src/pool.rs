@@ -194,9 +194,14 @@ impl Pool {
     }
 
     /// Merge pools, the state must correspond to `other` pool.
-    pub fn merge(&mut self, other: &Self, state: &State) {
-        for (group, sender) in other.groups.iter().zip(other.senders.iter()) {
-            let _ = self.add_group(&group, state, &sender);
+    pub fn merge(&mut self, other: &Self, state: &State, schema: &Schema) {
+        for group in other.groups.iter() {
+            let senders = Transaction::calc_senders(
+                &group.transactions(), state, schema
+            );
+            if check_same(senders.iter()) {
+                let _ = self.add_group(&group, state, &senders[0]);
+            }
         }
         self.update(state);
     }
