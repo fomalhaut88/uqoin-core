@@ -69,6 +69,13 @@ impl Pool {
         let groups_max = groups_max.unwrap_or(1000000000);
         for (group, sender) in self.groups.iter().zip(self.senders.iter())
                                           .take(groups_max) {
+            // Skip if coins are invalid
+            let group_senders = vec![sender.clone(); group.len()];
+            if Block::validate_coins(group.transactions(), state, 
+                                     &group_senders).is_err() {
+                continue;
+            }
+
             // Get order
             let order = group.get_order(state, 
                                         &vec![sender.clone(); group.len()]);
