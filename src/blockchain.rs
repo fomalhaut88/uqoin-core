@@ -164,4 +164,17 @@ impl Blockchain {
         }
         Ok(())
     }
+
+    /// Get blocks.
+    pub async fn get_block_many(&self, offset: usize, 
+                                count: usize) -> TokioResult<Vec<Block>> {
+        self.block_col.lock().await.get_many(offset, count).await
+    }
+
+    /// Get transactions.
+    pub async fn get_transaction_many(&self, offset: usize, 
+                                      count: usize) -> 
+                                      TokioResult<Vec<Transaction>> {
+        self.transaction_col.lock().await.get_many(offset, count).await
+    }
 }
