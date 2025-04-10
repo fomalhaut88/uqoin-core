@@ -177,4 +177,28 @@ impl Blockchain {
                                       TokioResult<Vec<Transaction>> {
         self.transaction_col.lock().await.get_many(offset, count).await
     }
+
+    /// Get raw bytes of blocks.
+    pub async fn get_block_raw(&self, offset: usize, 
+                               count: usize) -> TokioResult<Vec<u8>> {
+        self.block_col.lock().await.get_raw(offset, count).await
+    }
+
+    /// Get raw bytes of transactions.
+    pub async fn get_transaction_raw(&self, offset: usize, 
+                                     count: usize) -> TokioResult<Vec<u8>> {
+        self.transaction_col.lock().await.get_raw(offset, count).await
+    }
+
+    /// Update raw bytes of blocks.
+    pub async fn update_block_raw(&self, offset: usize, 
+                                  bytes: &[u8]) -> TokioResult<()> {
+        self.block_col.lock().await.update_raw(offset, bytes).await
+    }
+
+    /// Update raw bytes of transactions.
+    pub async fn update_transaction_raw(&self, offset: usize, 
+                                        bytes: &[u8]) -> TokioResult<()> {
+        self.transaction_col.lock().await.update_raw(offset, bytes).await
+    }
 }
