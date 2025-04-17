@@ -6,7 +6,7 @@ use sha3::{Sha3_256, Digest};
 use finitelib::prelude::*;
 
 
-/// 256-bit unsigned integer datatype
+/// 256-bit unsigned integer datatype.
 pub type U256 = bigi_of_bits!(256);
 
 /// Ring for 256-bit unsigned integers that supports +, -, *, /.

@@ -155,6 +155,7 @@ pub struct TwistedEdwardsCurveProj {
     pub generator: (U256, U256, U256),
 }
 
+
 impl TwistedEdwardsCurveProj {
     /// Create a new curve.
     pub fn new_ed25519() -> Self {
@@ -190,6 +191,7 @@ impl TwistedEdwardsCurveProj {
         (x, y)
     }
 }
+
 
 impl Group for TwistedEdwardsCurveProj {
     type Item = (U256, U256, U256);
