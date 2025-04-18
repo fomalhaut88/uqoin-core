@@ -126,10 +126,9 @@ impl Transaction {
 
 
 /// Group of transactions. Due to the check on create, group cannot be invalid.
-/// The valid group must have: 1) unique coins, 2) the same sender, 
-/// 3) consistent transaction order, types, values and count. Empty group is
-/// not allowed. Coins are supposed to be correct, group does not check them,
-/// use `Block::validate_coins` to check if necessary.
+/// The valid group must have: 1) unique coins, 2) the same sender, 3) correct 
+/// coins ownership, 4) consistent transaction order, types, values and count.  
+/// Empty group is not allowed.
 #[derive(Debug, Clone)]
 pub struct Group(Vec<Transaction>);
 
@@ -245,6 +244,11 @@ impl Group {
         // Check same sender
         validate!(check_same(senders.iter()), TransactionInvalidSender)?;
 
+        // Check ownership
+        for transaction in transactions.iter() {
+            transaction.validate_coin(state, &senders[0])?;
+        }
+
         // Check the first type
         match transactions[0].get_type() {
             // Error if the first transaction is fee
@@ -301,11 +305,10 @@ impl Group {
 
 /// Extension for the group of transactions. It must be filled by the validator
 /// in `Split` or `Merge` types. Due to the check on create, extenstion cannot  
-/// be invalid.  The valid extension must have: 1) unique coins, 2) the same  
-/// sender (validator), 3) consistent transaction order, types, values and 
-/// count depending on the group type. Extension can be empty for `Transfer` 
-/// type. Coins are supposed to be correct, extension does not check them,
-/// use `Block::validate_coins` to check if necessary.
+/// be invalid. The valid extension must have: 1) unique coins, 2) the same  
+/// sender (validator), 3) correct coins ownership, 4) consistent transaction  
+/// order, types, values and count depending on the group type. Extension can be 
+/// empty for `Transfer` type.
 #[derive(Debug, Clone)]
 pub struct Ext(Vec<Transaction>);
 
@@ -366,6 +369,11 @@ impl Ext {
 
         // Check same sender
         validate!(check_same(senders.iter()), TransactionInvalidSender)?;
+
+        // Check ownership
+        for transaction in transactions.iter() {
+            transaction.validate_coin(state, &senders[0])?;
+        }
 
         // Check the size
         match transactions.len() {

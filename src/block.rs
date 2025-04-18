@@ -99,6 +99,7 @@ impl Block {
     /// Validate coins. The checks:
     /// 1. All coins are unique.
     /// 2. All transactions are valid (see `Transaction::validate_coins()`).
+    #[deprecated(since="0.1.0", note="use groups and check_unique instead")]
     pub fn validate_coins(transactions: &[Transaction], state: &State, 
                           senders: &[U256]) -> UqoinResult<()> {
         // Repeated coins are not valid
@@ -123,8 +124,12 @@ impl Block {
     pub fn validate_transactions(transactions: &[Transaction], validator: &U256, 
                                  state: &State, senders: &[U256]) -> 
                                  UqoinResult<()> {
-        // Check coins
-        Self::validate_coins(transactions, state, senders)?;
+        // // Check coins
+        // Self::validate_coins(transactions, state, senders)?;
+
+        // Repeated coins are not valid
+        validate!(check_unique(transactions.iter().map(|tr| &tr.coin)), 
+                  CoinNotUnique)?;
 
         // Set a countdown for groupped transactions
         let mut countdown = transactions.len();

@@ -2,10 +2,8 @@ use std::collections::HashSet;
 
 use rand::Rng;
 
-use crate::validate;
 use crate::utils::*;
 use crate::transaction::{Type, Transaction, Group};
-use crate::block::Block;
 use crate::schema::Schema;
 use crate::state::{State, OrderCoinsMap};
 
@@ -32,31 +30,32 @@ impl Pool {
         self.senders.clear();
     }
 
-    /// Add a new group.
-    pub fn add(&mut self, group: &Group, state: &State, 
-               schema: &Schema) -> UqoinResult<()> {
-        let senders = Transaction::calc_senders(group.transactions(), state, 
-                                                schema);
-        validate!(check_same(senders.iter()), TransactionInvalidSender)?;
-        Block::validate_coins(group.transactions(), state, &senders)?;
-        self.groups.push(group.clone());
-        self.senders.push(senders[0].clone());
-        Ok(())
+    /// Add a new group. `sender` must correspond to the group sender that is
+    /// required on group creation.
+    pub fn add(&mut self, group: Group, sender: U256) {
+        self.groups.push(group);
+        self.senders.push(sender);
     }
 
-    /// Update the pool according to the given state. This function 
-    /// recalculates senders, so it may take a while.
+    /// Update the pool according to the given state. Valid group in one state
+    /// may be invalid in another. This function recalculates senders based on
+    /// the state, so it may take a while.
     pub fn update(&mut self, state: &State, schema: &Schema) {
-        let groups = self.groups.clone();
+        let old_groups = self.groups.clone();
         self.groups = Vec::new();
         self.senders = Vec::new();
-        for group in groups.iter() {
-            let _ = self.add(group, state, schema);
+        for old_group in old_groups.iter() {
+            let senders = Transaction::calc_senders(&old_group.transactions(), 
+                                                    state, schema);
+            if let Ok(group) = Group::new(old_group.transactions().to_vec(), 
+                                          state, &senders) {
+                self.add(group, senders[0].clone());
+            }
         }
     }
 
     /// Prepare transactions and senders for the next block. The pool must be
-    /// updated to the state.
+    /// updated according to this state.
     pub fn prepare<R: Rng>(&self, rng: &mut R, state: &State, schema: &Schema,
                            validator_key: &U256, groups_max: Option<usize>) -> 
                            (Vec<Transaction>, Vec<U256>) {
