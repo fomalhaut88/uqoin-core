@@ -1,3 +1,20 @@
+//! There are four types of transaction: transfer, fee, split and merge.
+//! Transaction instance itself keeps the coin number, receiver address and
+//! signature. The sender can be calculated from the signature and other
+//! information but it may take a while, so it is a good idea to cache
+//! senders instead of multiple extracting using the crypto schema.
+//! Transaction itself cannot be invalid literally, but the restored sender
+//! in some cases may be wrong in the sense of it does not owe the coin to
+//! send.
+//!
+//! Transactions may be groupped into groups and extensions. It is necessary
+//! in case of join fee transaction to the main one (that goes separately) or
+//! to implement splitting and merging coins. Each group or extention is always
+//! valid within a state, so if the state of the blockchain is changed the
+//! group may not be valid so it is necessary to recreate it under the new 
+//! state. This approach avoids multiple validation mistakes in the development
+//! process.
+
 use rand::Rng;
 use serde::{Serialize, Deserialize};
 

@@ -1,3 +1,7 @@
+//! State implements anentity that lives between blocks and contains special
+//! structure to validate coins, ownership and some other frequently used
+//! operations. State can be evolved from block to block forward or backward.
+
 use std::collections::{HashMap, HashSet};
 
 use serde::{Serialize, Deserialize};

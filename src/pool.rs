@@ -1,3 +1,9 @@
+//! Pool is a structure that keeps groups of transactions that are considered
+//! to be added to a new block. Since groups are valid within a certain state
+//! it is recommended to update the pool any time if the state is changed so
+//! the pool will contain only the relevant groups. Pool is needed to prepare
+//! transactions for a new block by `prepare`.
+
 use std::collections::HashSet;
 
 use rand::Rng;

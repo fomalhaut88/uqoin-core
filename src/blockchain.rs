@@ -1,3 +1,7 @@
+//! Blockchain is driver to store blocks and transactions on disk. It is done
+//! with the help of `Lbasedb`. It supports the structures and raw bytes on
+//! extranct and update.
+
 use tokio::io::{Result as TokioResult, ErrorKind};
 use tokio::sync::Mutex;
 use lbasedb::col::Col;

@@ -1,3 +1,8 @@
+//! Crypto schema that implemends 
+//! [EdDSA over Ed25619](https://en.wikipedia.org/wiki/EdDSA). It supports
+//! key pair generation, building and checking signature and serialization a
+//! point into a number and back.
+
 use rand::Rng;
 use finitelib::prelude::*;
 use finitelib::gf::prime::Prime;

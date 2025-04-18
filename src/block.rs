@@ -1,3 +1,13 @@
+//! Block of the blockchain. It contains block specific information like the
+//! offset of the first transaction, count of transactions, hash of the previous
+//! block (it equals to `GENESIS_HASH` for the first block), validator public
+//! key, nonce (a random 256-bit sequence) and hash (that must have the 
+//! necessary trailing zeros).
+//!
+//! There are also structures for the short information about the block called
+//! `BlockInfo` and extended information `BlockData` that contains all the
+//! attached transactions.
+
 use rand::Rng;
 use sha3::{Sha3_256, Digest};
 use serde::{Serialize, Deserialize};

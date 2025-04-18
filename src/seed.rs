@@ -1,3 +1,9 @@
+//! Seed implements a logic to work with mneminic phrases from which the
+//! wallets are created. This is actually not a Uqoin standard because such
+//! algorithms may be arbitrary, so it should be considered as a recommendation.
+//!
+//! For mnemonic support, BIP-39 standard is used.
+
 use rand::Rng;
 use rand::distr::{Distribution, StandardUniform};
 use bip39::{Mnemonic as Bip39Mnemonic, Language};

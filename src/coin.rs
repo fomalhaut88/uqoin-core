@@ -1,3 +1,12 @@
+//! Coin is represented as an unsigned 256-bit integer that has some special 
+//! properties giving it its denomination and a way to mine. The order of coin
+//! is defined as a count of leading zeros in binary hash fo the coin calculated
+//! from the coin number and the miner address that must have the same last
+//! 128-bit, otherwise the coin is considered as invalid. The order can be 
+//! marked in letter-number notation like C32 or E1. The value (denomination)
+//! of the coin is defined as two power the order. So the value is proportinal
+//! to the complexity to find the coin number that leads to the necessary hash.
+
 use rand::Rng;
 
 use crate::validate;

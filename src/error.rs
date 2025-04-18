@@ -1,3 +1,5 @@
+//! There are different kinds of errors mainly related to validations.
+
 /// Uqoin kinds of error.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {

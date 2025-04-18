@@ -1,3 +1,5 @@
+//! Additional functions.
+
 use std::mem;
 use std::hash::Hash;
 use std::collections::HashSet;
