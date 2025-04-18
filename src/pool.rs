@@ -9,6 +9,7 @@ use crate::state::{State, OrderCoinsMap};
 
 
 /// Validator pool that keeps requested transactions.
+#[derive(Debug, Clone)]
 pub struct Pool {
     groups: Vec<Group>,
     senders: Vec<U256>,
