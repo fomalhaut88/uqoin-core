@@ -1,8 +1,12 @@
-//! Pool is a structure that keeps groups of transactions that are considered
-//! to be added to a new block. Since groups are valid within a certain state
-//! it is recommended to update the pool any time if the state is changed so
-//! the pool will contain only the relevant groups. Pool is needed to prepare
-//! transactions for a new block by `prepare`.
+//! Manages a pool of transaction groups pending inclusion in a new block.
+//!
+//! The `pool` module maintains collections of transaction groups that are
+//! candidates for addition to the next block.
+//! Since the validity of these groups depends on the current blockchain state,
+//! it's recommended to update the pool
+//! whenever the state changes to ensure all groups remain relevant and valid.
+//! This module is essential for preparing
+//! transactions for block creation using the `prepare` function.
 
 use std::collections::HashSet;
 

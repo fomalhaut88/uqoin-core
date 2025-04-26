@@ -1,11 +1,19 @@
-//! Coin is represented as an unsigned 256-bit integer that has some special 
-//! properties giving it its denomination and a way to mine. The order of coin
-//! is defined as a count of leading zeros in binary hash fo the coin calculated
-//! from the coin number and the miner address that must have the same last
-//! 128-bit, otherwise the coin is considered as invalid. The order can be 
-//! marked in letter-number notation like C32 or E1. The value (denomination)
-//! of the coin is defined as two power the order. So the value is proportinal
-//! to the complexity to find the coin number that leads to the necessary hash.
+//! Provides utilities for representing, validating, and mining coins in the 
+//! Uqoin protocol.
+//!
+//! In Uqoin, a coin is a 256-bit unsigned integer (`U256`) with specific 
+//! structural properties:
+//!
+//! - The last 128 bits of the coin must match the last 128 bits of the miner's
+//! address.
+//! - The "order" of a coin is defined by the number of leading zeros in the
+//! hash of the coin and miner address.
+//! - The coin's value is `2^order`, making higher-order coins more valuable and
+//! harder to mine.
+//!
+//! This module includes functions for coin validation, order and value
+//! computation, symbol conversion, random coin generation, and mining.
+
 
 use rand::Rng;
 
@@ -13,21 +21,22 @@ use crate::validate;
 use crate::utils::*;
 
 
-/// Check if the coin is valid. This means first 128 bit must be the same
-/// as block_hash XOR miner.
+/// Validates a coin by ensuring its last 128 bits match those of the miner's 
+/// address.
 pub fn coin_validate(coin: &U256, miner: &U256) -> UqoinResult<()> {
     validate!(coin.as_array()[2..4] == miner.as_array()[2..4], CoinInvalid)
 }
 
 
-/// Get coin order.
+/// Calculates the order of a coin based on the number of leading zeros in the 
+/// hash of the coin and miner address.
 pub fn coin_order(coin: &U256, miner: &U256) -> u64 {
     let hash = hash_of_u256([coin, miner].into_iter());
     256 - hash.bit_len() as u64
 }
 
 
-/// Get coin symbol.
+/// Converts a coin's order into a symbolic representation (e.g., "C32").
 pub fn coin_symbol(order: u64) -> String {
     let letter: char = ('A' as u8 + (order / 10) as u8) as char;
     let number: u32 = 1 << (order % 10);
@@ -35,7 +44,7 @@ pub fn coin_symbol(order: u64) -> String {
 }
 
 
-/// Get coin order by symbol.
+/// Parses a coin's symbolic representation to retrieve its order.
 pub fn coin_order_by_symbol(symbol: &str) -> u64 {
     let letter = symbol.chars().next().unwrap() as u64 - 'A' as u64;
     let number: u64 = symbol[1..].parse().unwrap();
@@ -43,13 +52,13 @@ pub fn coin_order_by_symbol(symbol: &str) -> u64 {
 }
 
 
-/// Get coin value.
+/// Calculates the value of a coin based on its order.
 pub fn coin_value(order: u64) -> U256 {
     &U256::from(1) << order as usize
 }
 
 
-/// Generate random coin.
+/// Generates a random coin with a valid structure for a given miner.
 pub fn coin_random<R: Rng>(rng: &mut R, miner: &U256) -> U256 {
     // Empty coin
     let mut coin = U256::from(0);
@@ -67,7 +76,8 @@ pub fn coin_random<R: Rng>(rng: &mut R, miner: &U256) -> U256 {
 }
 
 
-/// Mine coins. The function returns an infinite iterator.
+/// Returns an infinite iterator that yields valid coins meeting a minimum order
+/// requirement.
 pub fn coin_mine<R: Rng>(rng: &mut R, miner: &U256,
                          min_order: u64) -> impl Iterator<Item = U256> {
     std::iter::repeat(1)
