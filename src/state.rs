@@ -1,6 +1,15 @@
-//! State implements anentity that lives between blocks and contains special
-//! structure to validate coins, ownership and some other frequently used
-//! operations. State can be evolved from block to block forward or backward.
+//! Represents the current dynamic state of the Uqoin blockchain, including coin
+//! ownership and metadata.
+//!
+//! The `State` maintains mappings from coins to their owners and transfer
+//! counters,
+//! allowing fast validation of transactions and blocks.
+//! It can be advanced by applying a new block, updating ownership and counters
+//! accordingly,
+//! or rolled back by reverting a block, restoring the previous state.
+//! This ensures that the blockchain can evolve consistently or revert safely
+//! when necessary,
+//! maintaining full integrity at each step.
 
 use std::collections::{HashMap, HashSet};
 

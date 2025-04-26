@@ -1,6 +1,36 @@
-//! There are different kinds of errors mainly related to validations.
+//! The `error` module in the `uqoin-cor`e library defines a structured approach
+//! to error handling within the Uqoin cryptocurrency protocol. It introduces a 
+//! comprehensive enumeration of error kinds that represent various failure 
+//! scenarios encountered during protocol operations, such as coin validation, 
+//! transaction processing, and block verification. By encapsulating these error
+//! conditions, the module facilitates robust error management and propagation
+//! throughout the system.
 
-/// Uqoin kinds of error.
+/// Represents specific categories of errors that can occur within the Uqoin 
+/// protocol:
+/// * CoinInvalid: Indicates that a coin fails validation checks.
+/// * CoinNotUnique: Denotes duplication of coin identifiers.
+/// * CoinTooCheap: Signifies that a coin's value is below the acceptable 
+/// threshold.
+/// * TransactionInvalidSender: The sender information in a transaction is 
+/// invalid or cannot be verified.
+/// * TransactionEmpty: The transaction contains no operations or data.
+/// * TransactionBrokenGroup: The transaction group structure is malformed or 
+/// inconsistent.
+/// * TransactionBrokenExt: Extension data is corrupted or invalid.
+/// * BlockBroken: The block structure is corrupted or fails integrity checks.
+/// * BlockOrderMismatch: The sequence of blocks does not follow the expected 
+/// order.
+/// * BlockValidatorMismatch: The block's validator does not match the expected
+/// validator.
+/// * BlockPreviousHashMismatch: The previous hash reference in the block does
+/// not match the actual previous block's hash.
+/// * BlockOffsetMismatch: The block's offset value is incorrect or
+/// inconsistent.
+/// * BlockInvalidHash: The block's hash does not meet the required criteria.
+/// * BlockInvalidHashComplexity: The block's hash does not satisfy the 
+/// complexity requirements.
+/// * Other: A catch-all for unspecified or miscellaneous errors.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {
     CoinInvalid,
@@ -22,6 +52,12 @@ pub enum ErrorKind {
 
 
 /// Shortcut for converting boolean check into error.
+/// A utility macro to streamline error checking:
+/// ```ignore
+/// validate!(condition, ErrorKindVariant)
+/// ```
+/// If condition evaluates to `true`, it returns `Ok(())`; otherwise, it returns
+/// an `Err` with the specified `ErrorKind`.
 #[macro_export]
 macro_rules! validate {
     ($check:expr, $kind:ident) => (
@@ -35,6 +71,11 @@ macro_rules! validate {
 
 
 /// Uqoin error structure. It supports converting into `std::io::Error`.
+/// Encapsulates an error kind along with a descriptive message:
+/// * kind: An instance of ErrorKind representing the type of error.
+/// * message: A human-readable description of the error.
+/// Implements the `std::error::Error` and `std::fmt::Display` traits for 
+/// integration with Rust's error handling ecosystem.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Error {
     kind: ErrorKind,
@@ -138,5 +179,17 @@ mod tests {
         let err_std: std::io::Error = kind.into();
         assert_eq!(err_std.kind(), std::io::ErrorKind::Other);
         assert_eq!(err_std.to_string(), "CoinInvalid");
+    }
+
+    #[test]
+    fn test_validate_macro() {
+        let result = validate!(true, CoinInvalid);
+        assert!(result.is_ok());
+
+        let result = validate!(false, CoinTooCheap);
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert_eq!(e.kind(), ErrorKind::CoinTooCheap);
+        }
     }
 }

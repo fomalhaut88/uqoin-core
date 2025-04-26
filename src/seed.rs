@@ -1,8 +1,13 @@
-//! Seed implements a logic to work with mneminic phrases from which the
-//! wallets are created. This is actually not a Uqoin standard because such
-//! algorithms may be arbitrary, so it should be considered as a recommendation.
+//! Provides functionality for generating and handling mnemonic phrases and 
+//! seeds, facilitating deterministic key generation for wallets.
 //!
-//! For mnemonic support, BIP-39 standard is used.
+//! This module utilizes the BIP-39 standard to create 12-word English mnemonic 
+//! phrases and derive corresponding 128-bit seeds. These seeds can 
+//! deterministically generate sequences of cryptographic keys compatible with
+//! the Uqoin protocol.
+//!
+//! Note: While this implementation follows BIP-39, it is not a formal part of 
+//! the Uqoin specification and should be considered a recommended approach.
 
 use rand::Rng;
 use rand::distr::{Distribution, StandardUniform};
@@ -13,51 +18,59 @@ use crate::utils::*;
 use crate::schema::Schema;
 
 
-/// Type for the mnemonic phrase that is 12 English words.
+/// Represents a 12-word English mnemonic phrase used for seed generation.
 pub type Mnemonic = [String; 12];
 
 
-/// 128-bit seed object that can be represented as 256-bit value and 12-words
-/// mnemonic phrase (according to BIP39). Seed may generate key sequence.
+/// Encapsulates a 128-bit seed derived from a BIP-39 mnemonic phrase.
+/// Provides methods for seed creation, retrieval, and key generation.
 pub struct Seed(Bip39Mnemonic);
 
 
 impl Seed {
-    /// Generate a random seed.
+    /// Generates a new random seed using the provided random number generator.
     pub fn random<R: Rng>(rng: &mut R) -> Self {
         rng.random()
     }
 
-    /// Create seed from value (only first 128-bit matter).
+    /// Creates a seed from a given 256-bit value, utilizing only the first 128
+    /// bits.
     pub fn from_value(value: &U256) -> Self {
         let entropy: [u8; 16] = value.to_bytes()[..16].try_into().unwrap();
         Self::from_entropy(&entropy)
     }
 
-    /// Create seed from mnemonic phrase.
+    /// Constructs a seed from a provided 12-word mnemonic phrase.
     pub fn from_mnemonic(mnemonic: &Mnemonic) -> Self {
         let phrase = mnemonic.join(" ");
         let bip93_mnemonic = Bip39Mnemonic::parse_normalized(&phrase).unwrap();
         Self(bip93_mnemonic)
     }
 
-    /// Get value of the seed.
+    /// Retrieves the 128-bit seed value as a `U256` type.
     pub fn value(&self) -> U256 {
         // TODO: Maybe I need a different way to generate 256-bit of the seed.
         let entropy: [u8; 16] = self.0.to_entropy().try_into().unwrap();
         u128::from_ne_bytes(entropy).into()
     }
 
-    /// Get the mnemonic phrase.
+    /// Returns the 12-word mnemonic phrase associated with the seed.
     pub fn mnemonic(&self) -> Mnemonic {
         // Take 12 words only
         self.0.words().take(12).map(|w| w.to_string())
             .collect::<Vec<String>>().try_into().unwrap()
     }
 
-    /// Iterate keys (for wallets, for example) generated from the seed.
-    /// Since the iterator is infinite, use it as `seed.gen_keys.take(...)`
-    /// or `seed.gen_keys.nth(...)`. The keys are always the same for same seed.
+    /// Generates an infinite, deterministic sequence of private keys from the
+    /// seed.
+    ///
+    /// Each key is uniquely derived from the seed and a sequential index,
+    /// allowing reproducible generation of multiple keys from a single seed.
+    /// This method is ideal for creating hierarchical deterministic (HD) 
+    /// wallets or for generating predictable test key sets.
+    ///
+    /// Since the iterator is infinite, it is recommended to combine it with 
+    /// methods like `.take(count)` if you need a fixed number of keys
     pub fn gen_keys(&self, schema: &Schema) -> impl Iterator<Item = U256> {
         let curve = schema.curve();
         let value = self.value();

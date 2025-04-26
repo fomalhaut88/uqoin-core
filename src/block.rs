@@ -1,12 +1,37 @@
-//! Block of the blockchain. It contains block specific information like the
-//! offset of the first transaction, count of transactions, hash of the previous
-//! block (it equals to `GENESIS_HASH` for the first block), validator public
-//! key, nonce (a random 256-bit sequence) and hash (that must have the 
-//! necessary trailing zeros).
+//! Defines the structure and validation logic for blocks within the Uqoin
+//! blockchain.
 //!
-//! There are also structures for the short information about the block called
-//! `BlockInfo` and extended information `BlockData` that contains all the
-//! attached transactions.
+//! A block in Uqoin encapsulates a set of transactions and metadata essential
+//! for maintaining the blockchain's integrity.
+//! Each block contains:
+//! - `offset`: The position of the block in the blockchain sequence.
+//! - `size`: The number of transactions included in the block.
+//! - `hash_prev`: The hash of the preceding block, establishing a link between
+//! blocks.
+//! - `validator`: The public key of the validator who created the block.
+//! - `nonce`: A 256-bit random value used in the proof-of-work mechanism.
+//! - `hash`: The resulting hash of the block, which must satisfy the network's
+//! difficulty requirements.
+//!
+//! The module also defines:
+//! - `BlockInfo`: A concise summary of a block's essential information.
+//! - `BlockData`: An extended structure that includes all transactions
+//! associated with a block.
+//!
+//! Constants:
+//! - `GENESIS_HASH`: The predefined hash value for the genesis (first) block.
+//! - `COMPLEXITY`: The network's difficulty level, determining the required
+//! number of trailing zeros in a valid block hash.
+//!
+//! The `Block` struct provides methods for:
+//! - Creating new blocks.
+//! - Validating blocks against the previous block's information, current state,
+//! and network complexity.
+//! - Calculating the block's message and hash.
+//! - Ensuring the block's hash meets the required complexity.
+//!
+//! This module ensures that each block adheres to the Uqoin protocol's rules,
+//! maintaining the blockchain's security and consistency.
 
 use rand::Rng;
 use sha3::{Sha3_256, Digest};

@@ -2,6 +2,14 @@
 //! with the help of `Lbasedb`. It supports the structures and raw bytes on
 //! extranct and update.
 
+//! Provides asynchronous storage and retrieval of blocks and transactions in
+//! the Uqoin blockchain.
+//!
+//! This module uses `Lbasedb` to persist blockchain data on disk,
+//! supporting structured access to individual transactions, blocks, and raw 
+//! bytes. It enables adding new blocks, reading block and transaction history,
+//! and low-level updates of serialized blockchain data.
+
 use tokio::io::{Result as TokioResult, ErrorKind};
 use tokio::sync::Mutex;
 use lbasedb::col::Col;
@@ -11,7 +19,11 @@ use crate::transaction::Transaction;
 use crate::block::{Block, BlockInfo, BlockData};
 
 
-/// Basic blockchain information: transactions and blocks.
+/// A driver for storing and retrieving blocks and transactions on disk.
+///
+/// `Blockchain` uses `Lbasedb` columns internally and ensures thread-safe 
+/// asynchronous access. It supports structured access to blocks and 
+/// transactions, as well as raw byte-level operations for advanced use cases.
 pub struct Blockchain {
     transaction_col: Mutex<Col<Transaction>>,
     block_col: Mutex<Col<Block>>,
@@ -19,7 +31,8 @@ pub struct Blockchain {
 
 
 impl Blockchain {
-    /// Create a blockchain instance.
+    /// Creates a new blockchain instance by opening transaction and block 
+    /// storage at the given path.
     pub async fn new(path: &str) -> TokioResult<Self> {
         let transaction_col = Mutex::new(Col::<Transaction>::new(
             path_concat!(path, "transactions.col")
@@ -30,25 +43,25 @@ impl Blockchain {
         Ok(Self { transaction_col, block_col })
     }
 
-    /// Check blockchain is empty.
+    /// Checks whether the blockchain contains any blocks.
     pub async fn is_empty(&self) -> TokioResult<bool> {
         let count = self.get_block_count().await?;
         Ok(count == 0)
     }
 
-    /// Get block count.
+    /// Retrieves the total number of blocks stored in the blockchain.
     pub async fn get_block_count(&self) -> TokioResult<u64> {
         let size = self.block_col.lock().await.size().await?;
         Ok(size as u64)
     }
 
-    /// Get transaction count.
+    /// Retrieves the total number of transactions stored in the blockchain.
     pub async fn get_transaction_count(&self) -> TokioResult<u64> {
         let size = self.transaction_col.lock().await.size().await?;
         Ok(size as u64)
     }
 
-    /// Get block by number.
+    /// Retrieves a block by its index (1-based).
     pub async fn get_block(&self, bix: u64) -> TokioResult<Block> {
         if bix == 0 {
             Err(ErrorKind::NotFound.into())
@@ -57,7 +70,7 @@ impl Blockchain {
         }
     }
 
-    /// Get transaction by number.
+    /// Retrieves a transaction by its index (1-based).
     pub async fn get_transaction(&self, tix: u64) -> 
                                  TokioResult<Transaction> {
         if tix == 0 {
@@ -67,7 +80,8 @@ impl Blockchain {
         }
     }
 
-    /// Get block info by number.
+    /// Retrieves basic information (`BlockInfo`) about a block by its index
+    /// (1-based). 
     pub async fn get_block_info(&self, bix: u64) -> TokioResult<BlockInfo> {
         if bix == 0 {
             Ok(BlockInfo::genesis())
@@ -81,7 +95,8 @@ impl Blockchain {
         }
     }
 
-    /// Get block data by number.
+    /// Retrieves the full `BlockData`, including the block and its associated
+    /// transactions  by its index (1-based).
     pub async fn get_block_data(&self, bix: u64) -> TokioResult<BlockData> {
         if bix == 0 {
             Ok(BlockData::genesis())
@@ -92,7 +107,8 @@ impl Blockchain {
         }
     }
 
-    /// Get many block data instances.
+    /// Retrieves multiple consecutive `BlockData` entries starting from a given
+    /// block index (1-based).
     pub async fn get_block_data_many(&self, bix: u64, count: u64) -> 
                                      TokioResult<Vec<BlockData>> {
         if (bix > 0) && (count > 0) {
@@ -130,21 +146,22 @@ impl Blockchain {
         }
     }
 
-    /// Get last block.
+    /// Retrieves the last (most recent) block stored in the blockchain.
     pub async fn get_last_block(&self) -> TokioResult<Block> {
         let bix = self.get_block_count().await?;
         self.get_block(bix).await
     }
 
-    /// Get transactions of a block by number.
+    /// Retrieves all transactions associated with a specific block.
     pub async fn get_transactions_of_block(&self, block: &Block) -> 
                                            TokioResult<Vec<Transaction>> {
         self.transaction_col.lock().await
             .get_many(block.offset as usize, block.size as usize).await
     }
 
-    /// Push new block with transactions. The function returns the number of 
-    /// the inserted block.
+    /// Pushes a new block along with its associated transactions into the
+    /// blockchain. It returns the 1-based block number (`bix`) of the inserted
+    /// block.
     pub async fn push_new_block(&self, block: &Block,
                                 transactions: &[Transaction]) -> 
                                 TokioResult<u64> {
@@ -154,7 +171,7 @@ impl Blockchain {
         Ok(bix)
     }
 
-    /// Truncate the blockchain until the necessary block count.
+    /// Truncates the blockchain to retain only a specified number of blocks.
     pub async fn truncate(&self, block_count: u64) -> TokioResult<()> {
         if block_count > 0 {
             let block = self.get_block(block_count).await?;
@@ -169,38 +186,39 @@ impl Blockchain {
         Ok(())
     }
 
-    /// Get blocks.
+    /// Retrieves multiple consecutive blocks by offset and count.
     pub async fn get_block_many(&self, offset: usize, 
                                 count: usize) -> TokioResult<Vec<Block>> {
         self.block_col.lock().await.get_many(offset, count).await
     }
 
-    /// Get transactions.
+    /// Retrieves multiple consecutive transactions by offset and count.
     pub async fn get_transaction_many(&self, offset: usize, 
                                       count: usize) -> 
                                       TokioResult<Vec<Transaction>> {
         self.transaction_col.lock().await.get_many(offset, count).await
     }
 
-    /// Get raw bytes of blocks.
+    /// Retrieves the raw serialized bytes of a range of blocks.
     pub async fn get_block_raw(&self, offset: usize, 
                                count: usize) -> TokioResult<Vec<u8>> {
         self.block_col.lock().await.get_raw(offset, count).await
     }
 
-    /// Get raw bytes of transactions.
+    /// Retrieves the raw serialized bytes of a range of transactions.
     pub async fn get_transaction_raw(&self, offset: usize, 
                                      count: usize) -> TokioResult<Vec<u8>> {
         self.transaction_col.lock().await.get_raw(offset, count).await
     }
 
-    /// Update raw bytes of blocks.
+    /// Updates the raw serialized bytes of blocks starting at the given offset.
     pub async fn update_block_raw(&self, offset: usize, 
                                   bytes: &[u8]) -> TokioResult<()> {
         self.block_col.lock().await.update_raw(offset, bytes).await
     }
 
-    /// Update raw bytes of transactions.
+    /// Updates the raw serialized bytes of transactions starting at the given
+    /// offset.
     pub async fn update_transaction_raw(&self, offset: usize, 
                                         bytes: &[u8]) -> TokioResult<()> {
         self.transaction_col.lock().await.update_raw(offset, bytes).await

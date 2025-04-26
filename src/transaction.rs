@@ -1,19 +1,24 @@
-//! There are four types of transaction: transfer, fee, split and merge.
-//! Transaction instance itself keeps the coin number, receiver address and
-//! signature. The sender can be calculated from the signature and other
-//! information but it may take a while, so it is a good idea to cache
-//! senders instead of multiple extracting using the crypto schema.
-//! Transaction itself cannot be invalid literally, but the restored sender
-//! in some cases may be wrong in the sense of it does not owe the coin to
-//! send.
+//! Defines the structure and behavior of transactions within the Uqoin
+//! protocol.
 //!
-//! Transactions may be groupped into groups and extensions. It is necessary
-//! in case of join fee transaction to the main one (that goes separately) or
-//! to implement splitting and merging coins. Each group or extention is always
-//! valid within a state, so if the state of the blockchain is changed the
-//! group may not be valid so it is necessary to recreate it under the new 
-//! state. This approach avoids multiple validation mistakes in the development
-//! process.
+//! Uqoin supports four types of transactions:
+//! - **Transfer**: Moves a coin from one address to another.
+//! - **Fee**: Represents a transaction fee.
+//! - **Split**: Divides a coin into smaller denominations.
+//! - **Merge**: Combines multiple coins into a larger denomination.
+//!
+//! Each transaction includes the coin's identifier, the recipient's address,
+//! and a digital signature.
+//! The sender's address can be derived from the signature and transaction
+//! details, though this process may be computationally intensive.
+//! To optimize performance, it's advisable to cache sender addresses after
+//! extraction.
+//!
+//! Transactions can be grouped, especially when combining operations like a
+//! main transaction with its associated fee.
+//! Such groupings are valid within a specific blockchain state.
+//! If the state changes, the validity of the group must be reassessed, ensuring
+//! consistency and preventing validation errors.
 
 use rand::Rng;
 use serde::{Serialize, Deserialize};
@@ -26,7 +31,7 @@ use crate::state::State;
 use crate::error::ErrorKind;
 
 
-/// Types of transaction or group. In case of group Fee must be incorrect.
+/// Enumerates the different types of transactions in the Uqoin protocol.
 #[derive(Debug, PartialEq)]
 pub enum Type {
     Transfer,
@@ -36,7 +41,12 @@ pub enum Type {
 }
 
 
-/// Transaction base structure.
+/// Represents a transaction in the Uqoin protocol.
+///
+/// Each transaction includes:
+/// - `coin`: The identifier of the coin involved.
+/// - `addr`: The recipient's address.
+/// - `sign_r` and `sign_s`: Components of the digital signature.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transaction {
     pub coin: U256,
@@ -47,7 +57,7 @@ pub struct Transaction {
 
 
 impl Transaction {
-    /// Create a new transaction object.
+    /// Constructs a new `Transaction` instance.
     pub fn new(coin: U256, addr: U256, sign_r: U256, sign_s: U256) -> Self {
         Self { coin, addr, sign_r, sign_s }
     }
@@ -61,7 +71,7 @@ impl Transaction {
         Self::new(coin, addr, sign_r, sign_s)
     }
 
-    /// Get transaction type.
+    /// Determines the type of the transaction based on the recipient's address.
     pub fn get_type(&self) -> Type {
         if self.addr == U256::from(0) {
             Type::Fee
@@ -74,7 +84,7 @@ impl Transaction {
         }
     }
 
-    /// Get transaction message as hash of coin and address.
+    /// Computes the message hash used for signing the transaction.
     pub fn get_msg(&self, counter: u64) -> U256 {
         Self::calc_msg(&self.coin, &self.addr, counter)
     }

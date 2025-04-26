@@ -1,16 +1,24 @@
-//! Implementation of the curve Ed25519 taken from 
-//! https://en.wikipedia.org/wiki/EdDSA#Ed25519. The equation is
-//! `- x^2 + y^2 = 1 - scalar x^2 y^2` where scalar = 121665/121666
-//! (or 0x2DFC9311D490018C7338BF8688861767FF8FF5B2BEBE27548A14B235ECA6874A),
-//! the modulo is 2^255-19 
-//! (or 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFED),
-//! the generator has y = 4/5
-//! (or 0x6666666666666666666666666666666666666666666666666666666666666658)
-//! and corresponding positive (even x)
-//! 0x216936D3CD6E53FEC0A4E231FDD6DC5C692CC7609525A7B2C9562D608F25D51A.
+//! Provides a pure Rust implementation of the Ed25519 elliptic curve,
+//! a high-performance, secure, and deterministic digital signature scheme,
+//! widely used in modern cryptographic applications.
+//!
+//! This module enables key generation, signing, and verification processes
+//! essential for transaction authentication and network integrity in Uqoin.
+//!
+//! The equation is
+//! `- x^2 + y^2 = 1 - scalar x^2 y^2` where `scalar = 121665/121666`
+//! (or `0x2DFC9311D490018C7338BF8688861767FF8FF5B2BEBE27548A14B235ECA6874A`),
+//! the modulo is `2^255-19 `
+//! (or `0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFED`),
+//! the generator has `y = 4/5`
+//! (or `0x6666666666666666666666666666666666666666666666666666666666666658`)
+//! and corresponding positive (even) `x`
+//! `0x216936D3CD6E53FEC0A4E231FDD6DC5C692CC7609525A7B2C9562D608F25D51A`.
 //! This curve has the order
-//! 0x1000000000000000000000000000000014DEF9DEA2F79CD65812631A5CF5D3ED
-//! and cofactor 8.
+//! `0x1000000000000000000000000000000014DEF9DEA2F79CD65812631A5CF5D3ED`
+//! and the cofactor `8`.
+//!
+//! Reference: <https://en.wikipedia.org/wiki/EdDSA#Ed25519>
 
 use finitelib::prelude::*;
 use finitelib::group::Group;
@@ -23,17 +31,29 @@ use crate::utils::*;
 /// Twisted Edwards curve defined by the equation 
 /// `- x^2 + y^2 = 1 - scalar x^2 y^2`.
 pub struct TwistedEdwardsCurve {
+    /// The finite field that provides all the necessary arithmetic.
     pub field: Prime<U256, R256>,
+
+    /// Modulo of the inner finite field.
     pub modulo: U256,
+
+    /// The curve parameter that controls the "twist" of the curve shape.
     pub scalar: U256,
+
+    /// Order of the curve.
     pub order: U256,
+
+    /// Cofactor of the curve.
     pub cofactor: U256,
+
+    /// Generator (or base point).
     pub generator: (U256, U256),
 }
 
 
 impl TwistedEdwardsCurve {
-    // Create a new curve instance.
+    /// Constructs a new instance of the curve using the standard parameters for 
+    /// Ed25519.
     pub fn new_ed25519() -> Self {
         let modulo = U256::from_hex(
             "7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFED"
@@ -63,7 +83,9 @@ impl TwistedEdwardsCurve {
         }
     }
 
-    /// Check the point on the curve.
+    /// Checks whether the point `a` lies on the curve defined by this 
+    /// instance. Returns `true` if the point satisfies the curve equation, 
+    /// otherwise `false`.
     pub fn on_curve(&self, a: &(U256, U256)) -> bool {
         let x2 = self.field.mul(&a.0, &a.0);
         let y2 = self.field.mul(&a.1, &a.1);
@@ -80,8 +102,10 @@ impl TwistedEdwardsCurve {
         left == right
     }
 
-    /// Calculate positive (even) x coordinate of the point on the curve
-    /// by given y coordinate.
+    /// Given a y-coordinate, attempts to compute the corresponding positive 
+    /// (even in terms of modulo) x-coordinate on the curve. Returns `Some(x)` 
+    /// if such an x exists, otherwise `None` if the calculation fails (no valid
+    /// point).
     pub fn calc_x(&self, y: &U256) -> Option<U256> {
         let y2 = self.field.mul(&y, &y);
         let x2 = self.field.div(
