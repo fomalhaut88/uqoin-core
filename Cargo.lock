@@ -514,7 +514,7 @@ dependencies = [
 
 [[package]]
 name = "uqoin-core"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "bip39",
  "finitelib",

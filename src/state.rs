@@ -105,6 +105,17 @@ impl State {
         self.owner_coins_map.get(owner)
     }
 
+    /// Calculate coins XOR hash of the owner for given order. This may take a 
+    /// while, so it is recommended to cache the result for often use.
+    pub fn calc_coins_hash(&self, owner: &U256, order: u64) -> Option<U256> {
+        let coins_map = self.owner_coins_map.get(owner)?;
+        if let Some(coins) = coins_map.get(&order) {
+            Some(coins.iter().fold(U256::from(0), |acc, num| &acc ^ &num))
+        } else {
+            Some(U256::from(0))
+        }
+    }
+
     /// Get last block info.
     pub fn get_last_block_info(&self) -> &BlockInfo {
         &self.last_block_info
