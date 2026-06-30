@@ -15,6 +15,7 @@ use tokio::sync::Mutex;
 use lbasedb::col::Col;
 use lbasedb::path_concat;
 
+use crate::validate;
 use crate::transaction::Transaction;
 use crate::block::{Block, BlockInfo, BlockData};
 
@@ -173,16 +174,24 @@ impl Blockchain {
 
     /// Truncates the blockchain to retain only a specified number of blocks.
     pub async fn truncate(&self, block_count: u64) -> TokioResult<()> {
-        if block_count > 0 {
-            let block = self.get_block(block_count).await?;
-            let transaction_count = block.offset + block.size;
-            self.block_col.lock().await.resize(block_count as usize).await?;
-            self.transaction_col.lock().await
-                .resize(transaction_count as usize).await?;
-        } else {
-            self.block_col.lock().await.resize(0).await?;
-            self.transaction_col.lock().await.resize(0).await?;
+        let mut block_col = self.block_col.lock().await;
+        let old_size = block_col.size().await? as u64;
+
+        validate!(block_count <= old_size, BlockchainTruncate)?;
+
+        if block_count < old_size {
+            if block_count > 0 {
+                let block = block_col.get(block_count as usize - 1).await?;
+                let transaction_count = block.offset + block.size;
+                block_col.resize(block_count as usize).await?;
+                self.transaction_col.lock().await
+                    .resize(transaction_count as usize).await?;
+            } else {
+                block_col.resize(0).await?;
+                self.transaction_col.lock().await.resize(0).await?;
+            }
         }
+
         Ok(())
     }
 
