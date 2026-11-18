@@ -135,9 +135,9 @@ dependencies = [
 
 [[package]]
 name = "finitelib"
-version = "0.1.15"
+version = "0.1.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d432ff16032e77e1994137ffe1328b7ac7cad41ba22138ce731af069f04d9f0a"
+checksum = "704d3083504d4e4192ff23ea3304638562acb52b946d26e0565fdd4751964995"
 dependencies = [
  "rand",
  "serde",
@@ -514,7 +514,7 @@ dependencies = [
 
 [[package]]
 name = "uqoin-core"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "bip39",
  "finitelib",
