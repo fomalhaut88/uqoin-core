@@ -47,6 +47,7 @@ pub enum ErrorKind {
     BlockOffsetMismatch,
     BlockInvalidHash,
     BlockInvalidHashComplexity,
+    BlockchainTruncate,
     Other,
 }
 
